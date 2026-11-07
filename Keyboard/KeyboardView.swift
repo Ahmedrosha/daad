@@ -170,7 +170,7 @@ final class KeyboardView: UIView {
                         }
                         tracker.cursorAnchorX = p.x
                         tracker.cursorAnchorY = p.y
-                        return
+                        continue
                     }
                     tracker.edgeReached = 0
 
