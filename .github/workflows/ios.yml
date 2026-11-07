@@ -28,6 +28,44 @@ jobs:
           mkdir -p "$HOME/private_keys"
           printf '%s' "$ASC_PRIVATE_KEY" > "$HOME/private_keys/AuthKey.p8"
 
+      - name: Verify App Store Connect API key
+        env:
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          KEY="$HOME/private_keys/AuthKey.p8"
+          echo "Key ID length: ${#KID} (should be 10)"
+          echo "Issuer ID length: ${#ISS} (should be 36)"
+          echo "Key file lines: $(wc -l < "$KEY" | tr -d ' ')"
+          grep -q "BEGIN PRIVATE KEY" "$KEY" && echo "BEGIN line: found" || echo "BEGIN line: MISSING"
+          grep -q "END PRIVATE KEY" "$KEY" && echo "END line: found" || echo "END line: MISSING"
+          ruby -ropenssl -rbase64 -rjson -rnet/http -e '
+            b64 = ->(s) { Base64.urlsafe_encode64(s, padding: false) }
+            begin
+              key = OpenSSL::PKey::EC.new(File.read(File.join(Dir.home, "private_keys/AuthKey.p8")))
+            rescue => e
+              puts "❌ The .p8 text in ASC_PRIVATE_KEY is not a valid private key: #{e.message}"
+              exit 1
+            end
+            now = Time.now.to_i
+            head = b64.(JSON.generate(alg: "ES256", kid: ENV["KID"].strip, typ: "JWT"))
+            body = b64.(JSON.generate(iss: ENV["ISS"].strip, iat: now, exp: now + 600, aud: "appstoreconnect-v1"))
+            input = "#{head}.#{body}"
+            der = OpenSSL::ASN1.decode(key.sign(OpenSSL::Digest::SHA256.new, input))
+            sig = der.value.map { |v| v.value.to_s(2).rjust(32, "\0") }.join
+            uri = URI("https://api.appstoreconnect.apple.com/v1/apps?limit=1")
+            req = Net::HTTP::Get.new(uri)
+            req["Authorization"] = "Bearer #{input}.#{b64.(sig)}"
+            res = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |h| h.request(req) }
+            if res.code == "200"
+              puts "✅ API key works with Apple"
+            else
+              puts "❌ Apple rejected the key (HTTP #{res.code}): #{res.body}"
+              puts "Key ID, Issuer ID and the .p8 file must all belong to the SAME key."
+              exit 1
+            end
+          '
+
       - name: Archive
         run: |
           xcodebuild archive \
