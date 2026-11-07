@@ -7,6 +7,7 @@ protocol KeyboardViewDelegate: AnyObject {
     func keyboardViewSwitchLanguage(_ view: KeyboardView)
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
     func keyboardView(_ view: KeyboardView, moveCursorLines lines: Int)
+    func keyboardView(_ view: KeyboardView, moveCursorToLineEdge right: Bool)
     func keyboardView(_ view: KeyboardView, feedbackFor action: KeyAction)
     func keyboardViewTickFeedback(_ view: KeyboardView)
     func keyboardView(_ view: KeyboardView, didGlide path: [CGPoint], keyCenters: [Character: CGPoint], keyWidth: CGFloat)
@@ -35,7 +36,7 @@ final class KeyboardView: UIView {
     private let holdDelay: TimeInterval = 0.45
     private let cursorStartDistance: CGFloat = 12
     private let cursorStepWidth: CGFloat = 9
-    private let cursorLineHeight: CGFloat = 22
+    private let cursorLineHeight: CGFloat = 34
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -158,11 +159,27 @@ final class KeyboardView: UIView {
                     tracker.lastPoint = p
                     tracker.lastTime = touch.timestamp
 
+                    // Finger at the keyboard's edge: cursor jumps to that end of the line.
+                    let edge: CGFloat = 28
+                    if p.x >= bounds.maxX - edge || p.x <= bounds.minX + edge {
+                        let right = p.x >= bounds.maxX - edge
+                        if tracker.edgeReached != (right ? 1 : -1) {
+                            tracker.edgeReached = right ? 1 : -1
+                            delegate?.keyboardView(self, moveCursorToLineEdge: right)
+                            delegate?.keyboardViewTickFeedback(self)
+                        }
+                        tracker.cursorAnchorX = p.x
+                        tracker.cursorAnchorY = p.y
+                        return
+                    }
+                    tracker.edgeReached = 0
+
                     let steps = Int((p.x - tracker.cursorAnchorX) / cursorStepWidth)
                     if steps != 0 {
                         delegate?.keyboardView(self, moveCursorBy: steps)
                         delegate?.keyboardViewTickFeedback(self)
                         tracker.cursorAnchorX += CGFloat(steps) * cursorStepWidth
+                        tracker.cursorAnchorY = p.y      // sideways moves don't count as up/down
                     }
                     let lines = Int((p.y - tracker.cursorAnchorY) / cursorLineHeight)
                     if lines != 0 {
@@ -373,6 +390,7 @@ private final class TouchTracker {
     var cursorAnchorY: CGFloat = 0
     var lastPoint: CGPoint = .zero
     var lastTime: TimeInterval = 0
+    var edgeReached = 0     // 1 right edge, -1 left edge
     var alternates: AlternatesView?
     var gliding = false
     var path: [CGPoint] = []

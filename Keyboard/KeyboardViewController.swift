@@ -905,11 +905,33 @@ extension KeyboardViewController: KeyboardViewDelegate {
         reload()
     }
 
+    /// Direction of the text around the cursor, from the nearest real letter (spaces and digits don't count).
+    private var textIsRightToLeft: Bool {
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        if let ch = before.reversed().first(where: { $0.isLetter }) ?? after.first(where: { $0.isLetter }) {
+            return TextHelpers.isArabic(ch)
+        }
+        return language == .arabic
+    }
+
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int) {
-        // Finger to the right should move the cursor visually right; in Arabic text that is backwards.
-        let nearby = proxy.documentContextBeforeInput?.last ?? proxy.documentContextAfterInput?.first
-        let rightToLeft = nearby.map(TextHelpers.isArabic) ?? (language == .arabic)
-        proxy.adjustTextPosition(byCharacterOffset: rightToLeft ? -steps : steps)
+        // Finger to the right moves the cursor visually right; in Arabic text that is backwards.
+        proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? -steps : steps)
+    }
+
+    func keyboardView(_ view: KeyboardView, moveCursorToLineEdge right: Bool) {
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        // Visual right is the start of the line in Arabic and the end in English.
+        let toStart = right == textIsRightToLeft
+        if toStart {
+            let count = before.reversed().prefix(while: { $0 != "\n" }).count
+            if count > 0 { proxy.adjustTextPosition(byCharacterOffset: -count) }
+        } else {
+            let count = after.prefix(while: { $0 != "\n" }).count
+            if count > 0 { proxy.adjustTextPosition(byCharacterOffset: count) }
+        }
     }
 
     /// Up/down by lines. Uses line breaks in the text; a long wrapped paragraph moves about one line's worth.
