@@ -34,8 +34,9 @@ final class KeyboardView: UIView {
 
     // Space-bar gesture tuning
     private let holdDelay: TimeInterval = 0.45
-    private let cursorStartDistance: CGFloat = 12
-    private let cursorStepWidth: CGFloat = 9
+    private let cursorStartDistance: CGFloat = 6
+    private let cursorStepWidth: CGFloat = 5
+    private let flingSpeed: CGFloat = 1800
     private let cursorLineHeight: CGFloat = 34
 
     override init(frame: CGRect) {
@@ -150,29 +151,29 @@ final class KeyboardView: UIView {
                     setCursorModeVisual(true)
                 }
                 if tracker.cursorMode {
-                    // Like a trackpad: any direction, and a faster swipe moves further.
+                    // Like a trackpad: small moves are precise, faster moves cover much more ground,
+                    // and a quick flick sends the cursor to that end of the line.
                     let dt = max(touch.timestamp - tracker.lastTime, 0.001)
                     let dx = p.x - tracker.lastPoint.x
                     let speed = abs(dx) / CGFloat(dt)                       // points per second
-                    let boost = min(max(speed / 350, 1), 4)
-                    tracker.cursorAnchorX -= dx * (boost - 1)               // fast moves count extra
                     tracker.lastPoint = p
                     tracker.lastTime = touch.timestamp
 
-                    // Finger at the keyboard's edge: cursor jumps to that end of the line.
-                    let edge: CGFloat = 28
-                    if p.x >= bounds.maxX - edge || p.x <= bounds.minX + edge {
-                        let right = p.x >= bounds.maxX - edge
-                        if tracker.edgeReached != (right ? 1 : -1) {
-                            tracker.edgeReached = right ? 1 : -1
-                            delegate?.keyboardView(self, moveCursorToLineEdge: right)
+                    if speed > flingSpeed && abs(dx) > 6 {
+                        let direction = dx > 0 ? 1 : -1
+                        if tracker.edgeReached != direction {
+                            tracker.edgeReached = direction
+                            delegate?.keyboardView(self, moveCursorToLineEdge: dx > 0)
                             delegate?.keyboardViewTickFeedback(self)
                         }
                         tracker.cursorAnchorX = p.x
                         tracker.cursorAnchorY = p.y
                         continue
                     }
-                    tracker.edgeReached = 0
+                    if speed < 500 { tracker.edgeReached = 0 }
+
+                    let boost = min(1 + pow(speed / 300, 1.4), 10)
+                    tracker.cursorAnchorX -= dx * (boost - 1)               // fast moves count extra
 
                     let steps = Int((p.x - tracker.cursorAnchorX) / cursorStepWidth)
                     if steps != 0 {
@@ -390,7 +391,7 @@ private final class TouchTracker {
     var cursorAnchorY: CGFloat = 0
     var lastPoint: CGPoint = .zero
     var lastTime: TimeInterval = 0
-    var edgeReached = 0     // 1 right edge, -1 left edge
+    var edgeReached = 0     // last flick direction: 1 right, -1 left
     var alternates: AlternatesView?
     var gliding = false
     var path: [CGPoint] = []
