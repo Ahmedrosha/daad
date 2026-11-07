@@ -186,7 +186,7 @@ final class KeyboardView: UIView {
                 bringSubviewToFront(popup)
             }
             if !kv.key.alternates.isEmpty {
-                tracker.timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self, weak tracker] _ in
+                tracker.timer = schedule(0.4, repeats: false) { [weak self, weak tracker] _ in
                     guard let self, let tracker else { return }
                     self.showAlternates(for: tracker)
                 }
@@ -194,9 +194,9 @@ final class KeyboardView: UIView {
 
         case .backspace:
             delegate?.keyboardViewDeleteBackward(self, word: false)
-            tracker.timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { [weak self, weak tracker] _ in
+            tracker.timer = schedule(0.45, repeats: false) { [weak self, weak tracker] _ in
                 guard let self, let tracker else { return }
-                tracker.timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self, weak tracker] _ in
+                tracker.timer = self.schedule(0.08, repeats: true) { [weak self, weak tracker] _ in
                     guard let self, let tracker else { return }
                     tracker.repeatCount += 1
                     if tracker.repeatCount > 15 {
@@ -209,7 +209,7 @@ final class KeyboardView: UIView {
             }
 
         case .space:
-            tracker.timer = Timer.scheduledTimer(withTimeInterval: holdDelay, repeats: false) { [weak self, weak tracker] _ in
+            tracker.timer = schedule(holdDelay, repeats: false) { [weak self, weak tracker] _ in
                 guard let self, let tracker, !tracker.cursorMode else { return }
                 tracker.holdFired = true
                 tracker.keyView.setLabel("⇄  " + (self.delegate?.nextLanguageName ?? ""))
@@ -219,6 +219,13 @@ final class KeyboardView: UIView {
         default:
             break
         }
+    }
+
+    /// Timers in .common mode keep firing while a finger is down.
+    private func schedule(_ interval: TimeInterval, repeats: Bool, _ block: @escaping (Timer) -> Void) -> Timer {
+        let timer = Timer(timeInterval: interval, repeats: repeats, block: block)
+        RunLoop.main.add(timer, forMode: .common)
+        return timer
     }
 
     private func showAlternates(for tracker: TouchTracker) {

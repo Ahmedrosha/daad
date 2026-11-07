@@ -42,6 +42,22 @@ final class KeyboardViewController: UIInputViewController {
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
     }
 
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        allowImmediateTouches()
+    }
+
+    /// iOS holds back touches near the bottom edge (home-indicator gesture), so a long press on the
+    /// space bar never arrived until the finger lifted. Turning that delay off fixes long presses there.
+    private func allowImmediateTouches() {
+        view.window?.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false }
+        var current: UIView? = view
+        while let v = current {
+            v.gestureRecognizers?.forEach { $0.delaysTouchesBegan = false }
+            current = v.superview
+        }
+    }
+
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { _ in self.updateHeight() })
