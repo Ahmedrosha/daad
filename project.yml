@@ -62,7 +62,7 @@ targets:
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
           NSExtensionAttributes:
             IsASCIICapable: false
-            PrefersRightToLeft: false
+            PrefersRightToLeft: true
             PrimaryLanguage: ar
             RequestsOpenAccess: true
     entitlements:

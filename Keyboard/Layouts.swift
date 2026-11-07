@@ -55,7 +55,7 @@ enum Layouts {
     // MARK: Letters
 
     private static func arabicLetters(_ c: LayoutContext) -> ([KeyRow], CGFloat) {
-        let max: CGFloat = 11
+        let max: CGFloat = 11.6   // 11 letters per row + room for a wider delete key
         var rows: [KeyRow] = []
         if c.showNumberRow { rows.append(numberRow(c, maxUnits: max)) }
         let r1 = ["ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"]
@@ -64,7 +64,7 @@ enum Layouts {
         rows.append(KeyRow(keys: chars(r1, alternates: arabicAlternates), rightToLeft: false))
         rows.append(KeyRow(keys: chars(r2, alternates: arabicAlternates), rightToLeft: false))
         // Standard Arabic layout: ض on the far left (where Q is), delete on the far right.
-        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1, arabic: true)], rightToLeft: false))
+        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1.6, arabic: true)], rightToLeft: false))
         let comma = Key(action: .character("،"), label: "،", alternates: harakat + ["؛"])
         let period = Key(action: .character("."), label: ".", alternates: ["؟", "!", "،", ":", "\"", "-", "'"])
         rows.append(bottomRow(c, maxUnits: max,
