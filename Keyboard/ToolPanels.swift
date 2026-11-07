@@ -1,7 +1,7 @@
 import UIKit
 
 enum KeyboardTool: CaseIterable {
-    case emoji, clipboard, translate, calculator, contacts, oneHanded, settings
+    case emoji, clipboard, translate, calculator, contacts, oneHanded, look, settings
 
     var symbol: String {
         switch self {
@@ -11,6 +11,7 @@ enum KeyboardTool: CaseIterable {
         case .calculator: return "plusminus.circle"
         case .contacts: return "person.crop.circle"
         case .oneHanded: return "hand.raised"
+        case .look: return "textformat.size"
         case .settings: return "gearshape"
         }
     }
@@ -23,6 +24,7 @@ enum KeyboardTool: CaseIterable {
         case .calculator: return arabic ? "حاسبة" : "Calculator"
         case .contacts: return arabic ? "جهات الاتصال" : "Contacts"
         case .oneHanded: return arabic ? "يد واحدة" : "One-handed"
+        case .look: return arabic ? "الحجم والخط" : "Size & font"
         case .settings: return arabic ? "الإعدادات" : "Settings"
         }
     }
@@ -375,6 +377,185 @@ final class SettingsPanelView: UIView, UITableViewDataSource {
 
     @objc private func toggled(_ sender: UISwitch) {
         SharedSettings.shared.set(sender.isOn, for: rows[sender.tag].0)
+        onChange?()
+    }
+
+    @objc private func closeTapped() { onClose?() }
+}
+
+// MARK: - Size & font
+
+/// Sliders for letter size, number size, key height and keyboard width, plus the key font.
+final class LookPanelView: UIView {
+    var onChange: (() -> Void)?
+    var onClose: (() -> Void)?
+
+    private let header = PanelHeader()
+    private let scroll = UIScrollView()
+    private let stack = UIStackView()
+    private let preview = UIStackView()
+    private var fontButtons: [UIButton] = []
+    private var theme = KeyboardTheme.make(dark: false)
+    private var arabic = true
+
+    private struct SliderSpec {
+        let titleAr: String
+        let titleEn: String
+        let range: ClosedRange<Float>
+        let get: () -> Double
+        let set: (Double) -> Void
+    }
+
+    private lazy var specs: [SliderSpec] = {
+        let s = SharedSettings.shared
+        return [
+            SliderSpec(titleAr: "حجم الحروف", titleEn: "Letter size", range: 0.7...1.4,
+                       get: { s.letterFontScale }, set: { s.letterFontScale = $0 }),
+            SliderSpec(titleAr: "حجم الأرقام", titleEn: "Number size", range: 0.7...1.4,
+                       get: { s.numberFontScale }, set: { s.numberFontScale = $0 }),
+            SliderSpec(titleAr: "ارتفاع الكيبورد", titleEn: "Keyboard height", range: 40...64,
+                       get: { s.keyHeight }, set: { s.keyHeight = $0 }),
+            SliderSpec(titleAr: "عرض الكيبورد", titleEn: "Keyboard width", range: 0.7...1.0,
+                       get: { s.keyboardWidthScale }, set: { s.keyboardWidthScale = $0 }),
+        ]
+    }()
+    private var sliders: [UISlider] = []
+    private var titles: [UILabel] = []
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        header.backButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        header.actionButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
+        header.actionButton.isHidden = false
+        addSubview(header)
+        addSubview(scroll)
+        stack.axis = .vertical
+        stack.spacing = 6
+        scroll.addSubview(stack)
+
+        preview.axis = .horizontal
+        preview.distribution = .fillEqually
+        preview.spacing = 0
+        preview.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        stack.addArrangedSubview(preview)
+
+        for (i, spec) in specs.enumerated() {
+            let title = UILabel()
+            title.font = UIFont.systemFont(ofSize: 14)
+            titles.append(title)
+            stack.addArrangedSubview(title)
+            let slider = UISlider()
+            slider.minimumValue = spec.range.lowerBound
+            slider.maximumValue = spec.range.upperBound
+            slider.tag = i
+            slider.addTarget(self, action: #selector(sliderChanged(_:)), for: .valueChanged)
+            sliders.append(slider)
+            stack.addArrangedSubview(slider)
+        }
+
+        let fontTitle = UILabel()
+        fontTitle.font = UIFont.systemFont(ofSize: 14)
+        fontTitle.tag = 99
+        stack.addArrangedSubview(fontTitle)
+        let fontScroll = UIScrollView()
+        fontScroll.showsHorizontalScrollIndicator = false
+        fontScroll.heightAnchor.constraint(equalToConstant: 44).isActive = true
+        let fontRow = UIStackView()
+        fontRow.axis = .horizontal
+        fontRow.spacing = 8
+        fontRow.translatesAutoresizingMaskIntoConstraints = false
+        fontScroll.addSubview(fontRow)
+        NSLayoutConstraint.activate([
+            fontRow.leadingAnchor.constraint(equalTo: fontScroll.contentLayoutGuide.leadingAnchor),
+            fontRow.trailingAnchor.constraint(equalTo: fontScroll.contentLayoutGuide.trailingAnchor),
+            fontRow.topAnchor.constraint(equalTo: fontScroll.contentLayoutGuide.topAnchor),
+            fontRow.bottomAnchor.constraint(equalTo: fontScroll.contentLayoutGuide.bottomAnchor),
+            fontRow.heightAnchor.constraint(equalTo: fontScroll.frameLayoutGuide.heightAnchor),
+        ])
+        for (i, font) in KeyFont.allCases.enumerated() {
+            let b = UIButton(type: .system)
+            b.tag = i
+            b.setTitle(" ض \(font.title) ", for: .normal)
+            b.titleLabel?.font = font.font(size: 17)
+            b.layer.cornerRadius = 8
+            b.contentEdgeInsets = UIEdgeInsets(top: 4, left: 10, bottom: 4, right: 10)
+            b.addTarget(self, action: #selector(fontTapped(_:)), for: .touchUpInside)
+            fontRow.addArrangedSubview(b)
+            fontButtons.append(b)
+        }
+        stack.addArrangedSubview(fontScroll)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(theme: KeyboardTheme, arabic: Bool) {
+        self.theme = theme
+        self.arabic = arabic
+        backgroundColor = theme.background
+        header.apply(theme: theme, title: arabic ? "الحجم والخط" : "Size & font")
+        header.actionButton.setTitle(arabic ? "إعادة ضبط" : "Reset", for: .normal)
+        for (i, spec) in specs.enumerated() {
+            titles[i].text = arabic ? spec.titleAr : spec.titleEn
+            titles[i].textColor = theme.secondaryText
+            titles[i].textAlignment = arabic ? .right : .left
+            sliders[i].value = Float(spec.get())
+            sliders[i].minimumTrackTintColor = theme.accent
+        }
+        if let fontTitle = stack.arrangedSubviews.first(where: { $0.tag == 99 }) as? UILabel {
+            fontTitle.text = arabic ? "شكل الحروف" : "Key font"
+            fontTitle.textColor = theme.secondaryText
+            fontTitle.textAlignment = arabic ? .right : .left
+        }
+        refreshFonts()
+        refreshPreview()
+    }
+
+    private func refreshFonts() {
+        let current = KeyFont(rawValue: SharedSettings.shared.keyFont) ?? .system
+        for (i, b) in fontButtons.enumerated() {
+            let selected = KeyFont.allCases[i] == current
+            b.backgroundColor = selected ? theme.accent : theme.key
+            b.setTitleColor(selected ? .white : theme.text, for: .normal)
+        }
+    }
+
+    private func refreshPreview() {
+        preview.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        let look = KeyLook.current
+        let samples = arabic ? ["ض", "ص", "ث", "ق", "ف", "١", "٢", "٣"] : ["q", "w", "e", "r", "t", "1", "2", "3"]
+        for s in samples {
+            preview.addArrangedSubview(KeyView(key: Key(action: .character(s), label: s), theme: theme, look: look))
+        }
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 40)
+        scroll.frame = CGRect(x: 0, y: 40, width: bounds.width, height: bounds.height - 40)
+        let width = bounds.width - 32
+        let size = stack.systemLayoutSizeFitting(CGSize(width: width, height: 0),
+                                                 withHorizontalFittingPriority: .required,
+                                                 verticalFittingPriority: .fittingSizeLevel)
+        stack.frame = CGRect(x: 16, y: 4, width: width, height: size.height)
+        scroll.contentSize = CGSize(width: bounds.width, height: size.height + 12)
+    }
+
+    @objc private func sliderChanged(_ sender: UISlider) {
+        specs[sender.tag].set(Double(sender.value))
+        refreshPreview()
+        onChange?()
+    }
+
+    @objc private func fontTapped(_ sender: UIButton) {
+        SharedSettings.shared.keyFont = KeyFont.allCases[sender.tag].rawValue
+        refreshFonts()
+        refreshPreview()
+        onChange?()
+    }
+
+    @objc private func resetTapped() {
+        SharedSettings.shared.resetLook()
+        configure(theme: theme, arabic: arabic)
         onChange?()
     }
 

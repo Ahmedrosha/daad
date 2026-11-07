@@ -50,9 +50,12 @@ final class KeyView: UIView {
     /// The visible key rectangle in KeyboardView coordinates.
     var faceFrameInParent: CGRect { face.frame.offsetBy(dx: frame.minX, dy: frame.minY) }
 
-    init(key: Key, theme: KeyboardTheme) {
+    private let look: KeyLook
+
+    init(key: Key, theme: KeyboardTheme, look: KeyLook = KeyLook()) {
         self.key = key
         self.theme = theme
+        self.look = look
         super.init(frame: .zero)
         isUserInteractionEnabled = false
 
@@ -107,15 +110,15 @@ final class KeyView: UIView {
         face.frame = bounds.insetBy(dx: 3, dy: 5)
         label.frame = face.bounds.insetBy(dx: 2, dy: 0)
         icon.frame = face.bounds
-        let size: CGFloat
         if key.smallLabel {
-            size = 15
+            label.font = UIFont.systemFont(ofSize: 15)
+        } else if let first = key.label.first, first.isNumber {
+            label.font = look.font.font(size: min(24, face.bounds.height * 0.55) * look.numberScale)
         } else if let first = key.label.first, TextHelpers.isArabic(first) {
-            size = min(26, face.bounds.height * 0.6)
+            label.font = look.font.font(size: min(26, face.bounds.height * 0.6) * look.letterScale)
         } else {
-            size = min(24, face.bounds.height * 0.55)
+            label.font = look.font.font(size: min(24, face.bounds.height * 0.55) * look.letterScale)
         }
-        label.font = UIFont.systemFont(ofSize: size, weight: key.smallLabel ? .regular : .regular)
         face.layer.shadowPath = UIBezierPath(roundedRect: face.bounds, cornerRadius: 6).cgPath
     }
 }

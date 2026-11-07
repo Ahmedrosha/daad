@@ -55,6 +55,53 @@ final class SharedSettings {
         static let shortcutsSeeded = "textShortcutsSeeded"
         static let pinned = "pinnedTexts"
         static let oneHanded = "oneHandedMode"
+        static let letterScale = "letterFontScale"
+        static let numberScale = "numberFontScale"
+        static let keyHeight = "keyHeight"
+        static let widthScale = "keyboardWidthScale"
+        static let font = "keyFont"
+    }
+
+    // MARK: Look & size
+
+    private func double(_ key: String, _ fallback: Double) -> Double {
+        defaults.object(forKey: key) == nil ? fallback : defaults.double(forKey: key)
+    }
+
+    /// Size of letters on the keys (0.7 – 1.4).
+    var letterFontScale: Double {
+        get { double(Keys.letterScale, 1) }
+        set { defaults.set(newValue, forKey: Keys.letterScale) }
+    }
+
+    /// Size of digits on the keys (0.7 – 1.4).
+    var numberFontScale: Double {
+        get { double(Keys.numberScale, 1) }
+        set { defaults.set(newValue, forKey: Keys.numberScale) }
+    }
+
+    /// Height of one row of keys in points (40 – 64).
+    var keyHeight: Double {
+        get { double(Keys.keyHeight, 52) }
+        set { defaults.set(newValue, forKey: Keys.keyHeight) }
+    }
+
+    /// Width of the keyboard compared to the screen (0.7 – 1).
+    var keyboardWidthScale: Double {
+        get { double(Keys.widthScale, 1) }
+        set { defaults.set(newValue, forKey: Keys.widthScale) }
+    }
+
+    /// Font id for key letters, see KeyFont.
+    var keyFont: String {
+        get { defaults.string(forKey: Keys.font) ?? "system" }
+        set { defaults.set(newValue, forKey: Keys.font) }
+    }
+
+    func resetLook() {
+        for k in [Keys.letterScale, Keys.numberScale, Keys.keyHeight, Keys.widthScale, Keys.font] {
+            defaults.removeObject(forKey: k)
+        }
     }
 
     /// "off", "left" or "right": the keyboard shrinks toward one side.

@@ -14,12 +14,14 @@ final class SuggestionBarView: UIView {
     var onClipboard: (() -> Void)?
     var onTools: (() -> Void)?
     var onCalculator: (() -> Void)?
+    var onLanguage: (() -> Void)?
 
     private let dismissButton = UIButton(type: .system)
     private let emojiButton = UIButton(type: .system)
     private let clipboardButton = UIButton(type: .system)
     private let toolsButton = UIButton(type: .system)
     private let calculatorButton = UIButton(type: .system)
+    private let languageButton = UIButton(type: .system)
     private var suggestionButtons: [UIButton] = []
     private var dividers: [UIView] = []
     private var values: [String] = []
@@ -33,6 +35,9 @@ final class SuggestionBarView: UIView {
         configure(clipboardButton, symbol: "doc.on.clipboard", action: #selector(clipboardTapped))
         configure(toolsButton, symbol: "square.grid.2x2", action: #selector(toolsTapped))
         configure(calculatorButton, symbol: "plusminus.circle", action: #selector(calculatorTapped))
+        languageButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .medium)
+        languageButton.addTarget(self, action: #selector(languageTapped), for: .touchUpInside)
+        addSubview(languageButton)
         for i in 0..<3 {
             let b = UIButton(type: .system)
             b.tag = i
@@ -62,8 +67,14 @@ final class SuggestionBarView: UIView {
         self.theme = theme
         backgroundColor = theme.background
         for b in [dismissButton, emojiButton, clipboardButton, toolsButton, calculatorButton] { b.tintColor = theme.text }
+        languageButton.setTitleColor(theme.text, for: .normal)
         for b in suggestionButtons { b.setTitleColor(theme.text, for: .normal) }
         for d in dividers { d.backgroundColor = theme.secondaryText.withAlphaComponent(0.35) }
+    }
+
+    /// Shows the language the button switches to.
+    func setLanguage(_ language: DaadLanguage) {
+        languageButton.setTitle(language == .arabic ? "En" : "ع", for: .normal)
     }
 
     func showTools() {
@@ -104,13 +115,14 @@ final class SuggestionBarView: UIView {
         super.layoutSubviews()
         let h = bounds.height
         dismissButton.frame = CGRect(x: 4, y: 0, width: 44, height: h)
+        languageButton.frame = CGRect(x: 50, y: 0, width: 44, height: h)
         let right = bounds.width - 4
         toolsButton.frame = CGRect(x: right - 44, y: 0, width: 44, height: h)
         clipboardButton.frame = CGRect(x: right - 92, y: 0, width: 44, height: h)
         calculatorButton.frame = CGRect(x: right - 140, y: 0, width: 44, height: h)
         emojiButton.frame = CGRect(x: right - 188, y: 0, width: 44, height: h)
 
-        let start: CGFloat = 52
+        let start: CGFloat = 98
         let width = (bounds.width - start - 4) / 3
         for (i, b) in suggestionButtons.enumerated() {
             b.frame = CGRect(x: start + CGFloat(i) * width, y: 0, width: width, height: h)
@@ -125,6 +137,7 @@ final class SuggestionBarView: UIView {
     @objc private func clipboardTapped() { onClipboard?() }
     @objc private func toolsTapped() { onTools?() }
     @objc private func calculatorTapped() { onCalculator?() }
+    @objc private func languageTapped() { onLanguage?() }
 
     @objc private func suggestionTapped(_ sender: UIButton) {
         guard values.indices.contains(sender.tag) else { return }

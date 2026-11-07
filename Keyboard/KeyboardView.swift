@@ -49,7 +49,7 @@ final class KeyboardView: UIView {
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(rows: [KeyRow], maxUnits: CGFloat, theme: KeyboardTheme) {
+    func configure(rows: [KeyRow], maxUnits: CGFloat, theme: KeyboardTheme, look: KeyLook = KeyLook()) {
         cancelAllTouches()
         self.rows = rows
         self.maxUnits = maxUnits
@@ -61,7 +61,7 @@ final class KeyboardView: UIView {
 
         rowViews = rows.map { row in
             row.keys.map { key in
-                let v = KeyView(key: key, theme: theme)
+                let v = KeyView(key: key, theme: theme, look: look)
                 addSubview(v)
                 return v
             }

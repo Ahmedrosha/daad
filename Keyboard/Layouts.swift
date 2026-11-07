@@ -9,6 +9,7 @@ struct LayoutContext: Equatable {
     var needsGlobe: Bool
     var returnLabel: String   // "" = return arrow icon
     var dark: Bool
+    var look: KeyLook = KeyLook()
 }
 
 enum Layouts {

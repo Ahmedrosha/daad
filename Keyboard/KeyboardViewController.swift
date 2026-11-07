@@ -10,6 +10,7 @@ final class KeyboardViewController: UIInputViewController {
     private let calculatorPanel = CalculatorPanelView()
     private let settingsPanel = SettingsPanelView()
     private let searchPanel = SearchPanelView()
+    private let lookPanel = LookPanelView()
     private var heightConstraint: NSLayoutConstraint?
     private var barHeightConstraint: NSLayoutConstraint?
     private var keyboardLeading: NSLayoutConstraint!
@@ -22,7 +23,7 @@ final class KeyboardViewController: UIInputViewController {
     private let lexicon = Lexicon.shared
     private let clipboard = ClipboardStore()
 
-    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, contacts, translate }
+    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, look, contacts, translate }
     private var panel: Panel = .keys
     /// Contacts search and translation are typed with the keyboard's own keys.
     private var isSearching: Bool { panel == .contacts || panel == .translate }
@@ -70,7 +71,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.delegate = self
         keyboardLeading = keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
         keyboardTrailing = keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel]
+        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel, lookPanel]
         for v in [suggestionBar, keyboardView, searchPanel] + overlays {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
@@ -172,6 +173,16 @@ final class KeyboardViewController: UIInputViewController {
         suggestionBar.onClipboard = { [weak self] in self?.showPanel(.clipboard) }
         suggestionBar.onTools = { [weak self] in self?.showPanel(.tools) }
         suggestionBar.onCalculator = { [weak self] in self?.showPanel(.calculator) }
+        suggestionBar.onLanguage = { [weak self] in
+            guard let self else { return }
+            self.keyboardViewSwitchLanguage(self.keyboardView)
+        }
+        lookPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        lookPanel.onChange = { [weak self] in
+            guard let self else { return }
+            self.reload(force: true)
+            self.view.setNeedsLayout()
+        }
 
         toolsPanel.onClose = { [weak self] in self?.showPanel(.keys) }
         toolsPanel.onSelect = { [weak self] tool in
@@ -185,6 +196,7 @@ final class KeyboardViewController: UIInputViewController {
             case .oneHanded:
                 self.settings.oneHandedMode = self.settings.oneHandedMode == "off" ? "right" : "off"
                 self.showPanel(.keys)
+            case .look: self.showPanel(.look)
             case .settings: self.showPanel(.settings)
             }
         }
@@ -255,6 +267,8 @@ final class KeyboardViewController: UIInputViewController {
             calculatorPanel.configure(theme: theme, arabic: arabic)
         case .settings:
             settingsPanel.configure(theme: theme, arabic: arabic)
+        case .look:
+            lookPanel.configure(theme: theme, arabic: arabic)
         case .contacts:
             query = ""
             mode = .letters
@@ -274,6 +288,7 @@ final class KeyboardViewController: UIInputViewController {
         toolsPanel.isHidden = newPanel != .tools
         calculatorPanel.isHidden = newPanel != .calculator
         settingsPanel.isHidden = newPanel != .settings
+        lookPanel.isHidden = newPanel != .look
         searchPanel.isHidden = !isSearching
         suggestionBar.isHidden = newPanel != .keys
         keyboardView.isHidden = !(newPanel == .keys || isSearching)
@@ -314,8 +329,15 @@ final class KeyboardViewController: UIInputViewController {
         let mode = settings.oneHandedMode
         let active = mode != "off" && (panel == .keys || isSearching)
         let gap = active ? floor(view.bounds.width * 0.16) : 0
-        let leading = mode == "right" ? gap : 0
-        let trailing = mode == "left" ? -gap : 0
+        var leading = mode == "right" ? gap : 0
+        var trailing = mode == "left" ? -gap : 0
+        if !active && (panel == .keys || isSearching) {
+            // Narrower keyboard, centered.
+            let scale = CGFloat(min(max(settings.keyboardWidthScale, 0.7), 1))
+            let inset = floor(view.bounds.width * (1 - scale) / 2)
+            leading = inset
+            trailing = -inset
+        }
         if keyboardLeading.constant != leading || keyboardTrailing.constant != trailing {
             keyboardLeading.constant = leading
             keyboardTrailing.constant = trailing
@@ -457,25 +479,28 @@ final class KeyboardViewController: UIInputViewController {
             arabicDigits: settings.bool(.arabicDigits),
             needsGlobe: needsInputModeSwitchKey,
             returnLabel: returnLabel,
-            dark: isDark)
+            dark: isDark,
+            look: KeyLook.current)
         if force || context != currentContext {
             currentContext = context
             let layout = Layouts.build(context)
             rowCount = layout.rows.count
             let theme = KeyboardTheme.make(dark: context.dark)
-            keyboardView.configure(rows: layout.rows, maxUnits: layout.maxUnits, theme: theme)
+            keyboardView.configure(rows: layout.rows, maxUnits: layout.maxUnits, theme: theme, look: context.look)
             suggestionBar.apply(theme: theme)
             updateHeight()
         }
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
         lexicon.blockOffensive = settings.bool(.blockOffensive)
+        suggestionBar.setLanguage(language)
         updateSuggestions()
     }
 
     private func updateHeight() {
         let screen = UIScreen.main.bounds
         let landscape = screen.width > screen.height
-        let rowHeight: CGFloat = landscape ? 40 : 52
+        let chosen = CGFloat(min(max(settings.keyHeight, 40), 64))
+        let rowHeight: CGFloat = landscape ? chosen * 40 / 52 : chosen
         let top = isSearching ? searchHeight : barHeight
         let height = top + CGFloat(rowCount) * rowHeight + 6
         if let c = heightConstraint {
