@@ -60,6 +60,13 @@ final class SharedSettings {
         static let keyHeight = "keyHeight"
         static let widthScale = "keyboardWidthScale"
         static let font = "keyFont"
+        static let arabicLayout = "arabicLayout"
+    }
+
+    /// Arabic letter arrangement: "iphone" (like Apple's keyboard) or "gboard".
+    var arabicLayout: String {
+        get { defaults.string(forKey: Keys.arabicLayout) ?? "iphone" }
+        set { defaults.set(newValue, forKey: Keys.arabicLayout) }
     }
 
     // MARK: Look & size

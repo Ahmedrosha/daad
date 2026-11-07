@@ -481,7 +481,8 @@ final class KeyboardViewController: UIInputViewController {
             needsGlobe: needsInputModeSwitchKey,
             returnLabel: returnLabel,
             dark: isDark,
-            look: KeyLook.current)
+            look: KeyLook.current,
+            arabicLayout: settings.arabicLayout)
         if force || context != currentContext {
             currentContext = context
             let layout = Layouts.build(context)
@@ -692,11 +693,23 @@ final class KeyboardViewController: UIInputViewController {
             proxy.insertText("\u{200F}")
         }
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
+        keepNumbersInOrder(before: text)
         proxy.insertText(text)
         lastCorrection = nil
         if shift == .on { shift = .off }
         updateAutoShift()
         reload()
+    }
+
+    /// Typing "2 4" in right-to-left text shows "4 2". When a digit follows "digit + space", an invisible
+    /// left-to-right mark goes before the space so the numbers stay in order. Nothing changes while typing "2 ".
+    private func keepNumbersInOrder(before text: String) {
+        guard let first = text.first, first.isASCII, first.isNumber else { return }
+        let before = Array(proxy.documentContextBeforeInput ?? "")
+        guard before.count >= 2, before[before.count - 1] == " ",
+              before[before.count - 2].isASCII, before[before.count - 2].isNumber else { return }
+        proxy.deleteBackward()
+        proxy.insertText("\u{200E} ")
     }
 
     private func commitWordBeforePunctuation() {
@@ -763,12 +776,7 @@ final class KeyboardViewController: UIInputViewController {
             lastCorrection = nil
         } else {
             commitCurrentWord()
-            if let last = proxy.documentContextBeforeInput?.last, last.isNumber {
-                // Invisible left-to-right marks keep "2 4" in order inside Arabic (right-to-left) text.
-                proxy.insertText("\u{200E} \u{200E}")
-            } else {
-                proxy.insertText(" ")
-            }
+            proxy.insertText(" ")
             lastSpaceTap = now
         }
         lastGlideWord = nil
@@ -891,6 +899,36 @@ extension KeyboardViewController: KeyboardViewDelegate {
         let nearby = proxy.documentContextBeforeInput?.last ?? proxy.documentContextAfterInput?.first
         let rightToLeft = nearby.map(TextHelpers.isArabic) ?? (language == .arabic)
         proxy.adjustTextPosition(byCharacterOffset: rightToLeft ? -steps : steps)
+    }
+
+    /// Up/down by lines. Uses line breaks in the text; a long wrapped paragraph moves about one line's worth.
+    func keyboardView(_ view: KeyboardView, moveCursorLines lines: Int) {
+        let estimatedLine = 32
+        for _ in 0..<abs(lines) {
+            let before = Array(proxy.documentContextBeforeInput ?? "")
+            let after = Array(proxy.documentContextAfterInput ?? "")
+            let column = before.count - ((before.lastIndex(of: "\n") ?? -1) + 1)
+            if lines < 0 {
+                // Up: same column on the previous line.
+                guard let lineStart = before.lastIndex(of: "\n") else {
+                    proxy.adjustTextPosition(byCharacterOffset: -min(estimatedLine, before.count))
+                    continue
+                }
+                let previousStart = (before[..<lineStart].lastIndex(of: "\n") ?? -1) + 1
+                let previousLength = lineStart - previousStart
+                let target = previousStart + min(column, previousLength)
+                proxy.adjustTextPosition(byCharacterOffset: target - before.count)
+            } else {
+                // Down: same column on the next line.
+                guard let lineEnd = after.firstIndex(of: "\n") else {
+                    proxy.adjustTextPosition(byCharacterOffset: min(estimatedLine, after.count))
+                    continue
+                }
+                let rest = after[(lineEnd + 1)...]
+                let nextLength = rest.firstIndex(of: "\n").map { $0 - (lineEnd + 1) } ?? rest.count
+                proxy.adjustTextPosition(byCharacterOffset: lineEnd + 1 + min(column, nextLength))
+            }
+        }
     }
 
     func keyboardView(_ view: KeyboardView, feedbackFor action: KeyAction) {

@@ -6,6 +6,7 @@ protocol KeyboardViewDelegate: AnyObject {
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool)
     func keyboardViewSwitchLanguage(_ view: KeyboardView)
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
+    func keyboardView(_ view: KeyboardView, moveCursorLines lines: Int)
     func keyboardView(_ view: KeyboardView, feedbackFor action: KeyAction)
     func keyboardViewTickFeedback(_ view: KeyboardView)
     func keyboardView(_ view: KeyboardView, didGlide path: [CGPoint], keyCenters: [Character: CGPoint], keyWidth: CGFloat)
@@ -34,6 +35,7 @@ final class KeyboardView: UIView {
     private let holdDelay: TimeInterval = 0.45
     private let cursorStartDistance: CGFloat = 12
     private let cursorStepWidth: CGFloat = 9
+    private let cursorLineHeight: CGFloat = 22
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -136,19 +138,37 @@ final class KeyboardView: UIView {
             let p = touch.location(in: self)
             switch tracker.keyView.key.action {
             case .space:
-                if !tracker.cursorMode && abs(p.x - tracker.start.x) > cursorStartDistance {
+                if !tracker.cursorMode && hypot(p.x - tracker.start.x, p.y - tracker.start.y) > cursorStartDistance {
                     tracker.invalidate()
                     tracker.cursorMode = true
                     tracker.cursorAnchorX = p.x
+                    tracker.cursorAnchorY = p.y
+                    tracker.lastPoint = p
+                    tracker.lastTime = touch.timestamp
                     tracker.keyView.resetLabel()
                     setCursorModeVisual(true)
                 }
                 if tracker.cursorMode {
+                    // Like a trackpad: any direction, and a faster swipe moves further.
+                    let dt = max(touch.timestamp - tracker.lastTime, 0.001)
+                    let dx = p.x - tracker.lastPoint.x
+                    let speed = abs(dx) / CGFloat(dt)                       // points per second
+                    let boost = min(max(speed / 350, 1), 4)
+                    tracker.cursorAnchorX -= dx * (boost - 1)               // fast moves count extra
+                    tracker.lastPoint = p
+                    tracker.lastTime = touch.timestamp
+
                     let steps = Int((p.x - tracker.cursorAnchorX) / cursorStepWidth)
                     if steps != 0 {
                         delegate?.keyboardView(self, moveCursorBy: steps)
                         delegate?.keyboardViewTickFeedback(self)
                         tracker.cursorAnchorX += CGFloat(steps) * cursorStepWidth
+                    }
+                    let lines = Int((p.y - tracker.cursorAnchorY) / cursorLineHeight)
+                    if lines != 0 {
+                        delegate?.keyboardView(self, moveCursorLines: lines)
+                        delegate?.keyboardViewTickFeedback(self)
+                        tracker.cursorAnchorY += CGFloat(lines) * cursorLineHeight
                     }
                 }
             case .character:
@@ -350,6 +370,9 @@ private final class TouchTracker {
     var holdFired = false
     var cursorMode = false
     var cursorAnchorX: CGFloat = 0
+    var cursorAnchorY: CGFloat = 0
+    var lastPoint: CGPoint = .zero
+    var lastTime: TimeInterval = 0
     var alternates: AlternatesView?
     var gliding = false
     var path: [CGPoint] = []

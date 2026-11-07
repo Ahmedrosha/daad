@@ -10,6 +10,7 @@ struct LayoutContext: Equatable {
     var returnLabel: String   // "" = return arrow icon
     var dark: Bool
     var look: KeyLook = KeyLook()
+    var arabicLayout: String = "iphone"
 }
 
 enum Layouts {
@@ -60,8 +61,16 @@ enum Layouts {
         var rows: [KeyRow] = []
         if c.showNumberRow { rows.append(numberRow(c, maxUnits: max)) }
         let r1 = ["ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"]
-        let r2 = ["ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"]
-        let r3 = ["ذ", "ء", "ؤ", "ر", "ى", "ة", "و", "ز", "ظ", "د"]
+        let r2: [String]
+        let r3: [String]
+        if c.arabicLayout == "gboard" {
+            r2 = ["ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"]
+            r3 = ["ذ", "ء", "ؤ", "ر", "ى", "ة", "و", "ز", "ظ", "د"]
+        } else {
+            // Same arrangement as the iPhone's Arabic keyboard.
+            r2 = ["ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ة"]
+            r3 = ["ء", "ظ", "ط", "ذ", "د", "ز", "ر", "و", "ى"]
+        }
         rows.append(KeyRow(keys: chars(r1, alternates: arabicAlternates), rightToLeft: false))
         rows.append(KeyRow(keys: chars(r2, alternates: arabicAlternates), rightToLeft: false))
         // Standard Arabic layout: ض on the far left (where Q is), delete on the far right.

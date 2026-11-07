@@ -122,6 +122,7 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
     @AppStorage(DaadSetting.rtlMark.rawValue, store: SharedSettings.store) private var rtlMark = false
+    @AppStorage("arabicLayout", store: SharedSettings.store) private var arabicLayout = "iphone"
     // Size & font
     @AppStorage("letterFontScale", store: SharedSettings.store) private var letterScale = 1.0
     @AppStorage("numberFontScale", store: SharedSettings.store) private var numberScale = 1.0
@@ -161,6 +162,10 @@ struct SettingsView: View {
                 }
 
                 Section(t("شكل الكيبورد", "Layout")) {
+                    Picker(t("ترتيب الحروف العربي", "Arabic letter layout"), selection: $arabicLayout) {
+                        Text(t("زي الآيفون", "Like iPhone")).tag("iphone")
+                        Text(t("زي Gboard", "Like Gboard")).tag("gboard")
+                    }
                     Toggle(t("صف الأرقام", "Number row"), isOn: $numberRow)
                     Toggle(t("أرقام عربية ١٢٣ في الكيبورد العربي", "Arabic digits ١٢٣ on the Arabic keyboard"), isOn: $arabicDigits)
                     Picker(t("وضع اليد الواحدة", "One-handed mode"), selection: $oneHandedMode) {
