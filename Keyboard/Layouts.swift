@@ -64,7 +64,7 @@ enum Layouts {
         rows.append(KeyRow(keys: chars(r1, alternates: arabicAlternates), rightToLeft: false))
         rows.append(KeyRow(keys: chars(r2, alternates: arabicAlternates), rightToLeft: false))
         // Standard Arabic layout: ض on the far left (where Q is), delete on the far right.
-        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1)], rightToLeft: false))
+        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1, arabic: true)], rightToLeft: false))
         let comma = Key(action: .character("،"), label: "،", alternates: harakat + ["؛"])
         let period = Key(action: .character("."), label: ".", alternates: ["؟", "!", "،", ":", "\"", "-", "'"])
         rows.append(bottomRow(c, maxUnits: max,
@@ -91,7 +91,7 @@ enum Layouts {
         }
         let shift = Key(action: .shift, label: "", symbol: shiftSymbol, width: 1.5,
                         style: c.shift == .off ? .special : .normal)
-        rows.append(KeyRow(keys: [shift] + chars(r3, alternates: englishAlternates, upper: upper) + [backspace(width: 1.5)],
+        rows.append(KeyRow(keys: [shift] + chars(r3, alternates: englishAlternates, upper: upper) + [backspace(width: 1.5, arabic: false)],
                            rightToLeft: false))
         let comma = Key(action: .character(","), label: ",", alternates: [";", ":", "'", "\""])
         let period = Key(action: .character("."), label: ".", alternates: ["?", "!", ",", "'", "\"", "-", ":"])
@@ -108,7 +108,8 @@ enum Layouts {
             Key(action: .character(primary[i]), label: primary[i], alternates: [other[i]], width: width)
         }
         // Deletes the character after the cursor.
-        keys.append(Key(action: .forwardDelete, label: "", symbol: "delete.right", width: width, style: .special))
+        keys.append(Key(action: .forwardDelete, label: "", symbol: c.language == .arabic ? "delete.left" : "delete.right",
+                        width: width, style: .special))
         return KeyRow(keys: keys, rightToLeft: false)
     }
 
@@ -131,7 +132,7 @@ enum Layouts {
                 : ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""]
             rows.append(KeyRow(keys: chars(r2), rightToLeft: false))
             let more = Key(action: .modeChange(.symbols2), label: "#+=", width: 1.5, style: .special, smallLabel: true)
-            rows.append(KeyRow(keys: [more] + r3Keys + [backspace(width: 1.5)], rightToLeft: false))
+            rows.append(KeyRow(keys: [more] + r3Keys + [backspace(width: 1.5, arabic: arabic)], rightToLeft: false))
         } else {
             let r1 = arabic
                 ? ["[", "]", "{", "}", "#", "%", "«", "»", "+", "="]
@@ -147,7 +148,7 @@ enum Layouts {
             }
             let back = Key(action: .modeChange(.symbols1), label: arabic ? "١٢٣" : "123",
                            width: 1.5, style: .special, smallLabel: true)
-            rows.append(KeyRow(keys: [back] + r3Keys + [backspace(width: 1.5)], rightToLeft: false))
+            rows.append(KeyRow(keys: [back] + r3Keys + [backspace(width: 1.5, arabic: arabic)], rightToLeft: false))
         }
         rows.append(bottomRow(c, maxUnits: 10,
                               modeKey: modeKey(arabic ? "أبج" : "ABC", to: .letters),
@@ -165,8 +166,9 @@ enum Layouts {
         }
     }
 
-    private static func backspace(width: CGFloat) -> Key {
-        Key(action: .backspace, label: "", symbol: "delete.left", width: width, style: .special)
+    /// In Arabic the delete icons are mirrored, because text runs right to left.
+    private static func backspace(width: CGFloat, arabic: Bool) -> Key {
+        Key(action: .backspace, label: "", symbol: arabic ? "delete.right" : "delete.left", width: width, style: .special)
     }
 
     private static func modeKey(_ label: String, to mode: KeyboardMode) -> Key {
