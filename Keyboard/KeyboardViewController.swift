@@ -30,6 +30,10 @@ final class KeyboardViewController: UIInputViewController {
     private var query = ""
     private var translateWork: DispatchWorkItem?
     private let searchHeight: CGFloat = 190
+    private let lookHeight: CGFloat = 230
+    /// Panels that keep the real keys visible underneath.
+    private var keysVisible: Bool { panel == .keys || isSearching || panel == .look }
+    private var topHeight: CGFloat { isSearching ? searchHeight : (panel == .look ? lookHeight : barHeight) }
 
     private var language: DaadLanguage = .arabic
     private var mode: KeyboardMode = .letters
@@ -71,8 +75,8 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.delegate = self
         keyboardLeading = keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
         keyboardTrailing = keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel, lookPanel]
-        for v in [suggestionBar, keyboardView, searchPanel] + overlays {
+        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel]
+        for v in [suggestionBar, keyboardView, searchPanel, lookPanel] + overlays {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -84,6 +88,11 @@ final class KeyboardViewController: UIInputViewController {
             searchPanel.trailingAnchor.constraint(equalTo: suggestionBar.trailingAnchor),
             searchPanel.topAnchor.constraint(equalTo: suggestionBar.topAnchor),
             searchPanel.bottomAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
+            // Size & font sits above the real keyboard, so changes show live.
+            lookPanel.leadingAnchor.constraint(equalTo: suggestionBar.leadingAnchor),
+            lookPanel.trailingAnchor.constraint(equalTo: suggestionBar.trailingAnchor),
+            lookPanel.topAnchor.constraint(equalTo: suggestionBar.topAnchor),
+            lookPanel.bottomAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
             keyboardLeading,
             keyboardTrailing,
             keyboardView.topAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
@@ -93,6 +102,7 @@ final class KeyboardViewController: UIInputViewController {
         barConstraint.isActive = true
         barHeightConstraint = barConstraint
         searchPanel.isHidden = true
+        lookPanel.isHidden = true
         for p in overlays {
             NSLayoutConstraint.activate([
                 p.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -292,10 +302,11 @@ final class KeyboardViewController: UIInputViewController {
         lookPanel.isHidden = newPanel != .look
         searchPanel.isHidden = !isSearching
         suggestionBar.isHidden = newPanel != .keys
-        keyboardView.isHidden = !(newPanel == .keys || isSearching)
-        barHeightConstraint?.constant = isSearching ? searchHeight : barHeight
+        keyboardView.isHidden = !keysVisible
+        barHeightConstraint?.constant = topHeight
         updateHeight()
         if isSearching { reload(force: true); updateSearch() }
+        if newPanel == .look { reload(force: true) }
         if newPanel == .keys { reload() }
         view.setNeedsLayout()
     }
@@ -328,11 +339,11 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let mode = settings.oneHandedMode
-        let active = mode != "off" && (panel == .keys || isSearching)
+        let active = mode != "off" && keysVisible
         let gap = active ? floor(view.bounds.width * 0.16) : 0
         var leading = mode == "right" ? gap : 0
         var trailing = mode == "left" ? -gap : 0
-        if !active && (panel == .keys || isSearching) {
+        if !active && keysVisible {
             // Narrower keyboard, centered.
             let scale = CGFloat(min(max(settings.keyboardWidthScale, 0.7), 1))
             let inset = floor(view.bounds.width * (1 - scale) / 2)
@@ -503,7 +514,7 @@ final class KeyboardViewController: UIInputViewController {
         let landscape = screen.width > screen.height
         let chosen = CGFloat(min(max(settings.keyHeight, 40), 64))
         let rowHeight: CGFloat = landscape ? chosen * 40 / 52 : chosen
-        let top = isSearching ? searchHeight : barHeight
+        let top = topHeight
         let height = top + CGFloat(rowCount) * rowHeight + 6
         if let c = heightConstraint {
             c.constant = height

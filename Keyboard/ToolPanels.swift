@@ -430,7 +430,6 @@ final class LookPanelView: UIView {
     private let header = PanelHeader()
     private let scroll = UIScrollView()
     private let stack = UIStackView()
-    private let preview = UIStackView()
     private var fontButtons: [UIButton] = []
     private var theme = KeyboardTheme.make(dark: false)
     private var arabic = true
@@ -470,11 +469,6 @@ final class LookPanelView: UIView {
         stack.spacing = 6
         scroll.addSubview(stack)
 
-        preview.axis = .horizontal
-        preview.distribution = .fillEqually
-        preview.spacing = 0
-        preview.heightAnchor.constraint(equalToConstant: 50).isActive = true
-        stack.addArrangedSubview(preview)
 
         for (i, spec) in specs.enumerated() {
             let title = UILabel()
@@ -544,7 +538,6 @@ final class LookPanelView: UIView {
             fontTitle.textAlignment = arabic ? .right : .left
         }
         refreshFonts()
-        refreshPreview()
     }
 
     private func refreshFonts() {
@@ -556,14 +549,6 @@ final class LookPanelView: UIView {
         }
     }
 
-    private func refreshPreview() {
-        preview.arrangedSubviews.forEach { $0.removeFromSuperview() }
-        let look = KeyLook.current
-        let samples = arabic ? ["ض", "ص", "ث", "ق", "ف", "١", "٢", "٣"] : ["q", "w", "e", "r", "t", "1", "2", "3"]
-        for s in samples {
-            preview.addArrangedSubview(KeyView(key: Key(action: .character(s), label: s), theme: theme, look: look))
-        }
-    }
 
     override func layoutSubviews() {
         super.layoutSubviews()
@@ -579,14 +564,12 @@ final class LookPanelView: UIView {
 
     @objc private func sliderChanged(_ sender: UISlider) {
         specs[sender.tag].set(Double(sender.value))
-        refreshPreview()
         onChange?()
     }
 
     @objc private func fontTapped(_ sender: UIButton) {
         SharedSettings.shared.keyFont = KeyFont.allCases[sender.tag].rawValue
         refreshFonts()
-        refreshPreview()
         onChange?()
     }
 
