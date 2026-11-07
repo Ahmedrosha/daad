@@ -1,0 +1,294 @@
+import UIKit
+
+protocol KeyboardViewDelegate: AnyObject {
+    func keyboardView(_ view: KeyboardView, didTap action: KeyAction)
+    func keyboardView(_ view: KeyboardView, insertAlternate text: String)
+    func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool)
+    func keyboardViewSwitchLanguage(_ view: KeyboardView)
+    func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
+    func keyboardView(_ view: KeyboardView, feedbackFor action: KeyAction)
+    func keyboardViewTickFeedback(_ view: KeyboardView)
+    var nextLanguageName: String { get }
+    var popupsEnabled: Bool { get }
+}
+
+/// Lays out the keys and handles every touch itself, so fast typing and gestures stay smooth.
+final class KeyboardView: UIView {
+    weak var delegate: KeyboardViewDelegate?
+
+    private var rows: [KeyRow] = []
+    private var rowViews: [[KeyView]] = []
+    private var maxUnits: CGFloat = 10
+    private var theme = KeyboardTheme.make(dark: false)
+    private var popup = KeyPopupView(theme: .make(dark: false))
+    private var trackers: [ObjectIdentifier: TouchTracker] = [:]
+
+    private let topPadding: CGFloat = 4
+    private let bottomPadding: CGFloat = 2
+
+    // Space-bar gesture tuning
+    private let holdDelay: TimeInterval = 0.45
+    private let cursorStartDistance: CGFloat = 12
+    private let cursorStepWidth: CGFloat = 9
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isMultipleTouchEnabled = true
+        isExclusiveTouch = false
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(rows: [KeyRow], maxUnits: CGFloat, theme: KeyboardTheme) {
+        cancelAllTouches()
+        self.rows = rows
+        self.maxUnits = maxUnits
+        self.theme = theme
+        backgroundColor = theme.background
+
+        rowViews.flatMap { $0 }.forEach { $0.removeFromSuperview() }
+        popup.removeFromSuperview()
+
+        rowViews = rows.map { row in
+            row.keys.map { key in
+                let v = KeyView(key: key, theme: theme)
+                addSubview(v)
+                return v
+            }
+        }
+        popup = KeyPopupView(theme: theme)
+        addSubview(popup)
+        setNeedsLayout()
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        guard !rows.isEmpty, bounds.width > 0 else { return }
+        let rowHeight = rowHeightValue
+        let unit = bounds.width / maxUnits
+        for (ri, row) in rows.enumerated() {
+            let total = row.keys.reduce(CGFloat(0)) { $0 + $1.width }
+            var x = (bounds.width - total * unit) / 2
+            let y = topPadding + CGFloat(ri) * rowHeight
+            let views = rowViews[ri]
+            let order: [Int] = row.rightToLeft ? Array(views.indices.reversed()) : Array(views.indices)
+            for i in order {
+                let w = row.keys[i].width * unit
+                views[i].frame = CGRect(x: x, y: y, width: w, height: rowHeight)
+                x += w
+            }
+        }
+    }
+
+    private var rowHeightValue: CGFloat {
+        (bounds.height - topPadding - bottomPadding) / CGFloat(max(rows.count, 1))
+    }
+
+    /// Finds the key under a point; gaps and edges go to the nearest key in that row.
+    private func keyView(at p: CGPoint) -> KeyView? {
+        guard !rows.isEmpty else { return nil }
+        let rowIndex = min(max(0, Int((p.y - topPadding) / rowHeightValue)), rows.count - 1)
+        return rowViews[rowIndex].min { a, b in
+            distance(p.x, a.frame) < distance(p.x, b.frame)
+        }
+    }
+
+    private func distance(_ x: CGFloat, _ r: CGRect) -> CGFloat {
+        if x < r.minX { return r.minX - x }
+        if x > r.maxX { return x - r.maxX }
+        return 0
+    }
+
+    // MARK: Touches
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let p = touch.location(in: self)
+            guard let kv = keyView(at: p) else { continue }
+
+            // Fast typing: a new finger commits any letter still held by another finger.
+            for (id, tracker) in Array(trackers) where tracker.keyView.key.action.isCharacter && tracker.alternates == nil {
+                trackers[id] = nil
+                finish(tracker, cancelled: false)
+            }
+
+            let tracker = TouchTracker(keyView: kv, start: p)
+            trackers[ObjectIdentifier(touch)] = tracker
+            begin(tracker)
+        }
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            guard let tracker = trackers[ObjectIdentifier(touch)] else { continue }
+            let p = touch.location(in: self)
+            switch tracker.keyView.key.action {
+            case .space:
+                if !tracker.cursorMode && abs(p.x - tracker.start.x) > cursorStartDistance {
+                    tracker.invalidate()
+                    tracker.cursorMode = true
+                    tracker.cursorAnchorX = p.x
+                    tracker.keyView.resetLabel()
+                    setCursorModeVisual(true)
+                }
+                if tracker.cursorMode {
+                    let steps = Int((p.x - tracker.cursorAnchorX) / cursorStepWidth)
+                    if steps != 0 {
+                        delegate?.keyboardView(self, moveCursorBy: steps)
+                        delegate?.keyboardViewTickFeedback(self)
+                        tracker.cursorAnchorX += CGFloat(steps) * cursorStepWidth
+                    }
+                }
+            case .character:
+                tracker.alternates?.select(atX: p.x)
+            default:
+                break
+            }
+        }
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let id = ObjectIdentifier(touch)
+            guard let tracker = trackers[id] else { continue }
+            trackers[id] = nil
+            finish(tracker, cancelled: false)
+        }
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        for touch in touches {
+            let id = ObjectIdentifier(touch)
+            guard let tracker = trackers[id] else { continue }
+            trackers[id] = nil
+            finish(tracker, cancelled: true)
+        }
+    }
+
+    private func cancelAllTouches() {
+        for tracker in trackers.values {
+            tracker.invalidate()
+            tracker.alternates?.removeFromSuperview()
+        }
+        trackers.removeAll()
+        setCursorModeVisual(false)
+    }
+
+    private func begin(_ tracker: TouchTracker) {
+        let kv = tracker.keyView
+        kv.isHighlighted = true
+        delegate?.keyboardView(self, feedbackFor: kv.key.action)
+
+        switch kv.key.action {
+        case .character:
+            if delegate?.popupsEnabled ?? true {
+                popup.show(kv.key.label, over: kv.faceFrameInParent, in: bounds)
+                bringSubviewToFront(popup)
+            }
+            if !kv.key.alternates.isEmpty {
+                tracker.timer = Timer.scheduledTimer(withTimeInterval: 0.4, repeats: false) { [weak self, weak tracker] _ in
+                    guard let self, let tracker else { return }
+                    self.showAlternates(for: tracker)
+                }
+            }
+
+        case .backspace:
+            delegate?.keyboardViewDeleteBackward(self, word: false)
+            tracker.timer = Timer.scheduledTimer(withTimeInterval: 0.45, repeats: false) { [weak self, weak tracker] _ in
+                guard let self, let tracker else { return }
+                tracker.timer = Timer.scheduledTimer(withTimeInterval: 0.08, repeats: true) { [weak self, weak tracker] _ in
+                    guard let self, let tracker else { return }
+                    tracker.repeatCount += 1
+                    if tracker.repeatCount > 15 {
+                        // After a while, delete whole words (slower so it stays controllable).
+                        if tracker.repeatCount % 3 == 0 { self.delegate?.keyboardViewDeleteBackward(self, word: true) }
+                    } else {
+                        self.delegate?.keyboardViewDeleteBackward(self, word: false)
+                    }
+                }
+            }
+
+        case .space:
+            tracker.timer = Timer.scheduledTimer(withTimeInterval: holdDelay, repeats: false) { [weak self, weak tracker] _ in
+                guard let self, let tracker, !tracker.cursorMode else { return }
+                tracker.holdFired = true
+                tracker.keyView.setLabel("⇄  " + (self.delegate?.nextLanguageName ?? ""))
+                self.delegate?.keyboardViewTickFeedback(self)
+            }
+
+        default:
+            break
+        }
+    }
+
+    private func showAlternates(for tracker: TouchTracker) {
+        popup.hide()
+        let alt = AlternatesView(items: [tracker.keyView.key.label] + tracker.keyView.key.alternates, theme: theme)
+        addSubview(alt)
+        alt.place(over: tracker.keyView.faceFrameInParent, in: bounds)
+        tracker.alternates = alt
+        delegate?.keyboardViewTickFeedback(self)
+    }
+
+    private func finish(_ tracker: TouchTracker, cancelled: Bool) {
+        tracker.invalidate()
+        let kv = tracker.keyView
+        kv.isHighlighted = false
+        popup.hide()
+
+        if let alt = tracker.alternates {
+            if !cancelled, let text = alt.selectedItem {
+                delegate?.keyboardView(self, insertAlternate: text)
+            }
+            alt.removeFromSuperview()
+            return
+        }
+
+        switch kv.key.action {
+        case .space:
+            if tracker.cursorMode {
+                setCursorModeVisual(false)
+            } else if tracker.holdFired {
+                kv.resetLabel()
+                if !cancelled { delegate?.keyboardViewSwitchLanguage(self) }
+            } else if !cancelled {
+                delegate?.keyboardView(self, didTap: .space)
+            }
+        case .backspace:
+            break
+        default:
+            if !cancelled { delegate?.keyboardView(self, didTap: kv.key.action) }
+        }
+    }
+
+    /// Like iOS: while moving the cursor, the key labels fade out.
+    private func setCursorModeVisual(_ on: Bool) {
+        for v in rowViews.flatMap({ $0 }) { v.setDimmed(on) }
+    }
+}
+
+/// Lets UIDevice.playInputClick() work when Full Access is off.
+extension KeyboardView: UIInputViewAudioFeedback {
+    var enableInputClicksWhenVisible: Bool { true }
+}
+
+private final class TouchTracker {
+    let keyView: KeyView
+    let start: CGPoint
+    var timer: Timer?
+    var repeatCount = 0
+    var holdFired = false
+    var cursorMode = false
+    var cursorAnchorX: CGFloat = 0
+    var alternates: AlternatesView?
+
+    init(keyView: KeyView, start: CGPoint) {
+        self.keyView = keyView
+        self.start = start
+    }
+
+    func invalidate() {
+        timer?.invalidate()
+        timer = nil
+    }
+}

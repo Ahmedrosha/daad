@@ -1,0 +1,73 @@
+name: Daad
+options:
+  bundleIdPrefix: com.daad
+  deploymentTarget:
+    iOS: "16.0"
+  developmentLanguage: ar
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ${DEVELOPMENT_TEAM}
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: 5.0
+    TARGETED_DEVICE_FAMILY: 1
+
+targets:
+  Daad:
+    type: application
+    platform: iOS
+    sources:
+      - App
+      - Shared
+    scheme: {}
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleDisplayName: ضاد
+        CFBundleDevelopmentRegion: ar
+        LSRequiresIPhoneOS: true
+        UILaunchScreen: {}
+        ITSAppUsesNonExemptEncryption: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    entitlements:
+      path: App/Daad.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.daad.keyboard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daad.keyboard
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    dependencies:
+      - target: DaadKeyboard
+
+  DaadKeyboard:
+    type: app-extension
+    platform: iOS
+    sources:
+      - Keyboard
+      - Shared
+    info:
+      path: Keyboard/Info.plist
+      properties:
+        CFBundleDisplayName: ضاد
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.keyboard-service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController
+          NSExtensionAttributes:
+            IsASCIICapable: false
+            PrefersRightToLeft: false
+            PrimaryLanguage: ar
+            RequestsOpenAccess: true
+    entitlements:
+      path: Keyboard/DaadKeyboard.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.daad.keyboard
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daad.keyboard.ext
+        APPLICATION_EXTENSION_API_ONLY: YES
