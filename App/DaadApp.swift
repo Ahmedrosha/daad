@@ -24,12 +24,26 @@ private let defaultAppLanguage = (Locale.preferredLanguages.first ?? "ar").hasPr
 struct DaadApp: App {
     @AppStorage("appLanguage") private var appLanguage = defaultAppLanguage
 
+    init() {
+        DaadApp.applyDirection(UserDefaults.standard.string(forKey: "appLanguage") ?? defaultAppLanguage)
+    }
+
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .id(appLanguage)   // rebuild screens so UIKit picks up the new direction
                 .environment(\.arabic, appLanguage == "ar")
                 .environment(\.layoutDirection, appLanguage == "ar" ? .rightToLeft : .leftToRight)
+                .onChange(of: appLanguage) { DaadApp.applyDirection($0) }
         }
+    }
+
+    /// The app's base language is Arabic, so UIKit lays screens out right-to-left. When English is chosen,
+    /// UIKit must switch too; otherwise pushed screens (like Text shortcuts) come out mirrored.
+    static func applyDirection(_ language: String) {
+        let attribute: UISemanticContentAttribute = language == "ar" ? .forceRightToLeft : .forceLeftToRight
+        UIView.appearance().semanticContentAttribute = attribute
+        UINavigationBar.appearance().semanticContentAttribute = attribute
     }
 }
 
