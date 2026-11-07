@@ -103,13 +103,14 @@ enum Layouts {
         let useArabic = c.language == .arabic && c.arabicDigits
         let primary = useArabic ? arabicDigits : latinDigits
         let other = useArabic ? latinDigits : arabicDigits
-        let width = maxUnits / 11
+        let deleteWidth: CGFloat = c.language == .arabic ? 1.6 : 1.5   // same as the main delete key
+        let width = (maxUnits - deleteWidth) / 10
         var keys = primary.indices.map { i in
             Key(action: .character(primary[i]), label: primary[i], alternates: [other[i]], width: width)
         }
         // Deletes the character after the cursor.
         keys.append(Key(action: .forwardDelete, label: "", symbol: c.language == .arabic ? "delete.left" : "delete.right",
-                        width: width, style: .special))
+                        width: deleteWidth, style: .special))
         return KeyRow(keys: keys, rightToLeft: false)
     }
 
