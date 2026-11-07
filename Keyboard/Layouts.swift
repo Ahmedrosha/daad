@@ -128,14 +128,14 @@ enum Layouts {
                 Key(action: .character(digits[$0]), label: digits[$0], alternates: [otherDigits[$0]])
             }, rightToLeft: false))
             let r2 = arabic
-                ? ["-", "/", ":", "؛", "(", ")", "$", "&", "@", "\""]
+                ? ["-", "/", ":", "؛", ")", "(", "$", "&", "@", "\""]   // shown as ( ) after mirroring
                 : ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""]
             rows.append(KeyRow(keys: arabic ? arabicSymbols(r2) : chars(r2), rightToLeft: false))
             let more = Key(action: .modeChange(.symbols2), label: "#+=", width: 1.5, style: .special, smallLabel: true)
             rows.append(KeyRow(keys: [more] + r3Keys + [backspace(width: 1.5, arabic: arabic)], rightToLeft: false))
         } else {
             let r1 = arabic
-                ? ["[", "]", "{", "}", "#", "%", "«", "»", "+", "="]
+                ? ["]", "[", "}", "{", "#", "%", "»", "«", "+", "="]   // shown as [ ] { } « » after mirroring
                 : ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="]
             rows.append(KeyRow(keys: arabic ? arabicSymbols(r1) : chars(r1), rightToLeft: false))
             if arabic {

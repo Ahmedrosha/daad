@@ -282,8 +282,12 @@ final class CalculatorPanelView: UIView {
         case "=":
             if let v = Calculator.evaluate(expression) { expression = Calculator.format(v) }
         case "↵":
-            let text = Calculator.evaluate(expression).map(Calculator.format) ?? expression
-            if !text.isEmpty { onInsert?(text) }
+            // Writes the whole equation, e.g. "5+3 = 8", kept left-to-right inside Arabic text.
+            var text = expression
+            if let v = Calculator.evaluate(expression), expression.contains(where: { "+−×÷%".contains($0) }) {
+                text = expression + " = " + Calculator.format(v)
+            }
+            if !text.isEmpty { onInsert?("\u{2066}" + text + "\u{2069}") }
         default:
             if "+−×÷%".contains(t), let last = expression.last, "+−×÷".contains(last) {
                 expression.removeLast()   // replace the previous operator
