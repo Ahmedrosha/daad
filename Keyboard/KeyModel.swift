@@ -15,6 +15,7 @@ enum ShiftState: Equatable {
 enum KeyAction: Equatable {
     case character(String)
     case backspace
+    case forwardDelete
     case shift
     case space
     case returnKey

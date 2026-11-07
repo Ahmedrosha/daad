@@ -103,10 +103,12 @@ enum Layouts {
         let useArabic = c.language == .arabic && c.arabicDigits
         let primary = useArabic ? arabicDigits : latinDigits
         let other = useArabic ? latinDigits : arabicDigits
-        let width = maxUnits / 10
-        let keys = primary.indices.map { i in
+        let width = maxUnits / 11
+        var keys = primary.indices.map { i in
             Key(action: .character(primary[i]), label: primary[i], alternates: [other[i]], width: width)
         }
+        // Deletes the character after the cursor.
+        keys.append(Key(action: .forwardDelete, label: "", symbol: "delete.right", width: width, style: .special))
         return KeyRow(keys: keys, rightToLeft: false)
     }
 
@@ -176,7 +178,6 @@ enum Layouts {
         if c.needsGlobe {
             keys.append(Key(action: .nextKeyboard, label: "", symbol: "globe", width: 1.2, style: .special))
         }
-        keys.append(Key(action: .dismiss, label: "", symbol: "keyboard.chevron.compact.down", width: 1.2, style: .special))
         if let left { keys.append(left) }
         let spaceIndex = keys.count
         keys.append(Key(action: .space, label: c.language.displayName, smallLabel: true))

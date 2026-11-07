@@ -8,6 +8,7 @@ protocol KeyboardViewDelegate: AnyObject {
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
     func keyboardView(_ view: KeyboardView, feedbackFor action: KeyAction)
     func keyboardViewTickFeedback(_ view: KeyboardView)
+    func keyboardView(_ view: KeyboardView, didGlide path: [CGPoint], keyCenters: [Character: CGPoint], keyWidth: CGFloat)
     var nextLanguageName: String { get }
     var popupsEnabled: Bool { get }
 }
@@ -15,6 +16,9 @@ protocol KeyboardViewDelegate: AnyObject {
 /// Lays out the keys and handles every touch itself, so fast typing and gestures stay smooth.
 final class KeyboardView: UIView {
     weak var delegate: KeyboardViewDelegate?
+    var glideEnabled = false
+
+    private let trail = CAShapeLayer()
 
     private var rows: [KeyRow] = []
     private var rowViews: [[KeyView]] = []
@@ -35,6 +39,12 @@ final class KeyboardView: UIView {
         super.init(frame: frame)
         isMultipleTouchEnabled = true
         isExclusiveTouch = false
+        trail.fillColor = UIColor.clear.cgColor
+        trail.lineWidth = 6
+        trail.lineCap = .round
+        trail.lineJoin = .round
+        trail.zPosition = 10
+        layer.addSublayer(trail)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -58,6 +68,8 @@ final class KeyboardView: UIView {
         }
         popup = KeyPopupView(theme: theme)
         addSubview(popup)
+        trail.strokeColor = theme.accent.withAlphaComponent(0.7).cgColor
+        trail.path = nil
         setNeedsLayout()
     }
 
@@ -107,7 +119,7 @@ final class KeyboardView: UIView {
             guard let kv = keyView(at: p) else { continue }
 
             // Fast typing: a new finger commits any letter still held by another finger.
-            for (id, tracker) in Array(trackers) where tracker.keyView.key.action.isCharacter && tracker.alternates == nil {
+            for (id, tracker) in Array(trackers) where tracker.keyView.key.action.isCharacter && tracker.alternates == nil && !tracker.gliding {
                 trackers[id] = nil
                 finish(tracker, cancelled: false)
             }
@@ -140,7 +152,23 @@ final class KeyboardView: UIView {
                     }
                 }
             case .character:
-                tracker.alternates?.select(atX: p.x)
+                if let alt = tracker.alternates {
+                    alt.select(atX: p.x)
+                } else if tracker.gliding {
+                    if let last = tracker.path.last, hypot(p.x - last.x, p.y - last.y) >= 3 {
+                        tracker.path.append(p)
+                        drawTrail(tracker.path)
+                    }
+                } else if glideEnabled, trackers.count == 1,
+                          hypot(p.x - tracker.start.x, p.y - tracker.start.y) > max(tracker.keyView.bounds.width * 0.75, 22) {
+                    // Finger left the key: this is a swipe across letters (glide typing).
+                    tracker.invalidate()
+                    tracker.gliding = true
+                    tracker.keyView.isHighlighted = false
+                    popup.hide()
+                    tracker.path = [tracker.start, p]
+                    drawTrail(tracker.path)
+                }
             default:
                 break
             }
@@ -243,6 +271,15 @@ final class KeyboardView: UIView {
         kv.isHighlighted = false
         popup.hide()
 
+        if tracker.gliding {
+            trail.path = nil
+            if !cancelled {
+                let (centers, width) = letterKeyCenters()
+                delegate?.keyboardView(self, didGlide: tracker.path, keyCenters: centers, keyWidth: width)
+            }
+            return
+        }
+
         if let alt = tracker.alternates {
             if !cancelled, let text = alt.selectedItem {
                 delegate?.keyboardView(self, insertAlternate: text)
@@ -268,6 +305,32 @@ final class KeyboardView: UIView {
         }
     }
 
+    private func drawTrail(_ points: [CGPoint]) {
+        guard points.count > 1 else { trail.path = nil; return }
+        let path = UIBezierPath()
+        path.move(to: points[0])
+        for p in points.dropFirst() { path.addLine(to: p) }
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        trail.path = path.cgPath
+        CATransaction.commit()
+    }
+
+    /// Centers of the letter keys (not digits), used by glide typing.
+    private func letterKeyCenters() -> ([Character: CGPoint], CGFloat) {
+        var centers: [Character: CGPoint] = [:]
+        var widths: [CGFloat] = []
+        for v in rowViews.flatMap({ $0 }) {
+            guard case .character(let text) = v.key.action, text.count == 1,
+                  let ch = text.lowercased().first, ch.isLetter else { continue }
+            let f = v.faceFrameInParent
+            centers[ch] = CGPoint(x: f.midX, y: f.midY)
+            widths.append(v.frame.width)
+        }
+        let width = widths.isEmpty ? 30 : widths.reduce(0, +) / CGFloat(widths.count)
+        return (centers, width)
+    }
+
     /// Like iOS: while moving the cursor, the key labels fade out.
     private func setCursorModeVisual(_ on: Bool) {
         for v in rowViews.flatMap({ $0 }) { v.setDimmed(on) }
@@ -288,6 +351,8 @@ private final class TouchTracker {
     var cursorMode = false
     var cursorAnchorX: CGFloat = 0
     var alternates: AlternatesView?
+    var gliding = false
+    var path: [CGPoint] = []
 
     init(keyView: KeyView, start: CGPoint) {
         self.keyView = keyView

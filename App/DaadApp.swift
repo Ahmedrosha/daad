@@ -79,6 +79,11 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.haptics.rawValue, store: SharedSettings.store) private var haptics = true
     @AppStorage(DaadSetting.keyPopups.rawValue, store: SharedSettings.store) private var keyPopups = true
     @AppStorage(DaadSetting.rtlMark.rawValue, store: SharedSettings.store) private var rtlMark = false
+    @AppStorage(DaadSetting.suggestions.rawValue, store: SharedSettings.store) private var suggestions = true
+    @AppStorage(DaadSetting.autocorrect.rawValue, store: SharedSettings.store) private var autocorrect = false
+    @AppStorage(DaadSetting.glideTyping.rawValue, store: SharedSettings.store) private var glideTyping = true
+    @State private var confirmClear = false
+    @State private var cleared = false
 
     var body: some View {
         NavigationStack {
@@ -88,6 +93,9 @@ struct SettingsView: View {
                     Toggle("أرقام عربية ١٢٣ في الكيبورد العربي", isOn: $arabicDigits)
                 }
                 Section("الكتابة") {
+                    Toggle("اقتراح الكلمات", isOn: $suggestions)
+                    Toggle("التصحيح التلقائي", isOn: $autocorrect)
+                    Toggle("الكتابة بالسحب", isOn: $glideTyping)
                     Toggle("نقطة بضغطتين على المسافة", isOn: $quickPeriod)
                     Toggle("حرف كابيتال أول الجملة (English)", isOn: $autoCapitalize)
                     Toggle("علامة اتجاه عربي أول النص", isOn: $rtlMark)
@@ -99,7 +107,23 @@ struct SettingsView: View {
                 } header: {
                     Text("الإحساس")
                 } footer: {
-                    Text("الاهتزاز محتاج تفعيل Allow Full Access.")
+                    Text("الاهتزاز، والحافظة، ووصول الإعدادات دي للكيبورد محتاجين تفعيل Allow Full Access.")
+                }
+                Section {
+                    Button(cleared ? "اتمسح ✓" : "مسح الكلمات اللي اتعلمها الكيبورد", role: .destructive) {
+                        confirmClear = true
+                    }
+                    .disabled(cleared)
+                } header: {
+                    Text("القاموس")
+                } footer: {
+                    Text("قوائم الكلمات: FrequencyWords – Hermit Dave (CC BY-SA 4.0)")
+                }
+            }
+            .confirmationDialog("تمسح كل الكلمات اللي اتعلمها الكيبورد؟", isPresented: $confirmClear, titleVisibility: .visible) {
+                Button("مسح", role: .destructive) {
+                    SharedSettings.shared.requestClearLearned()
+                    cleared = true
                 }
             }
             .navigationTitle("الإعدادات")

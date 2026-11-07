@@ -10,10 +10,13 @@ enum DaadSetting: String, CaseIterable {
     case haptics         // اهتزاز الضغط
     case keyPopups       // معاينة الحرف
     case rtlMark         // علامة اتجاه مخفية أول النص العربي
+    case suggestions     // شريط الاقتراحات
+    case autocorrect     // التصحيح التلقائي
+    case glideTyping     // الكتابة بالسحب
 
     var defaultValue: Bool {
         switch self {
-        case .rtlMark: return false
+        case .rtlMark, .autocorrect: return false
         default: return true
         }
     }
@@ -43,7 +46,19 @@ final class SharedSettings {
         defaults.register(defaults: initial)
     }
 
-    private enum Keys { static let language = "language" }
+    private enum Keys {
+        static let language = "language"
+        static let clearLearned = "clearLearnedRequested"
+    }
+
+    /// The app asks the keyboard to forget learned words (the keyboard owns that data).
+    func requestClearLearned() { defaults.set(true, forKey: Keys.clearLearned) }
+
+    func consumeClearLearnedRequest() -> Bool {
+        guard defaults.bool(forKey: Keys.clearLearned) else { return false }
+        defaults.set(false, forKey: Keys.clearLearned)
+        return true
+    }
 
     func bool(_ setting: DaadSetting) -> Bool { defaults.bool(forKey: setting.rawValue) }
 

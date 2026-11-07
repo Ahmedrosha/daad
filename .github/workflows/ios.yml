@@ -20,6 +20,17 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Download word lists
+        run: |
+          mkdir -p Keyboard/Resources "$RUNNER_TEMP/words"
+          BASE=https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018
+          curl -fsSL "$BASE/ar/ar_50k.txt" -o "$RUNNER_TEMP/words/ar.txt"
+          curl -fsSL "$BASE/en/en_50k.txt" -o "$RUNNER_TEMP/words/en.txt"
+          perl -CSD -ne 's/\r//; if (/^[\x{0621}-\x{064A}]+ \d+$/) { print; exit if ++$n >= 30000 }' "$RUNNER_TEMP/words/ar.txt" > Keyboard/Resources/words_ar.txt
+          perl -ne "s/\r//; if (/^[a-z']+ \d+\$/) { print; exit if ++\$n >= 30000 }" "$RUNNER_TEMP/words/en.txt" > Keyboard/Resources/words_en.txt
+          wc -l Keyboard/Resources/*.txt
+          head -n 3 Keyboard/Resources/words_ar.txt Keyboard/Resources/words_en.txt
+
       - name: Generate Xcode project
         env:
           DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
