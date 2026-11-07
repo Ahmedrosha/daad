@@ -1,7 +1,7 @@
 import UIKit
 
 enum KeyboardTool: CaseIterable {
-    case emoji, clipboard, translate, calculator, contacts, settings
+    case emoji, clipboard, translate, calculator, contacts, oneHanded, settings
 
     var symbol: String {
         switch self {
@@ -10,6 +10,7 @@ enum KeyboardTool: CaseIterable {
         case .translate: return "character.bubble"
         case .calculator: return "plusminus.circle"
         case .contacts: return "person.crop.circle"
+        case .oneHanded: return "hand.raised"
         case .settings: return "gearshape"
         }
     }
@@ -21,6 +22,7 @@ enum KeyboardTool: CaseIterable {
         case .translate: return arabic ? "ترجمة" : "Translate"
         case .calculator: return arabic ? "حاسبة" : "Calculator"
         case .contacts: return arabic ? "جهات الاتصال" : "Contacts"
+        case .oneHanded: return arabic ? "يد واحدة" : "One-handed"
         case .settings: return arabic ? "الإعدادات" : "Settings"
         }
     }
@@ -107,7 +109,7 @@ final class ToolsPanelView: UIView {
     override func layoutSubviews() {
         super.layoutSubviews()
         header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 44)
-        let columns = 3
+        let columns = 4
         let rows = Int(ceil(Double(tiles.count) / Double(columns)))
         let pad: CGFloat = 8
         let top: CGFloat = 48
@@ -321,6 +323,8 @@ final class SettingsPanelView: UIView, UITableViewDataSource {
         (.keySound, "صوت الضغط", "Key sound"),
         (.haptics, "اهتزاز الضغط", "Haptics"),
         (.keyPopups, "معاينة الحرف", "Key pop-ups"),
+        (.emojiSuggestions, "اقتراح إيموجي", "Emoji suggestions"),
+        (.blockOffensive, "منع الكلمات البذيئة", "Block offensive words"),
     ]
 
     override init(frame: CGRect) {

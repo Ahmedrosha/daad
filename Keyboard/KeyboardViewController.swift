@@ -12,6 +12,12 @@ final class KeyboardViewController: UIInputViewController {
     private let searchPanel = SearchPanelView()
     private var heightConstraint: NSLayoutConstraint?
     private var barHeightConstraint: NSLayoutConstraint?
+    private var keyboardLeading: NSLayoutConstraint!
+    private var keyboardTrailing: NSLayoutConstraint!
+    /// Buttons beside the shrunken keyboard in one-handed mode.
+    private let oneHandedStrip = UIStackView()
+    private let switchSideButton = UIButton(type: .system)
+    private let expandButton = UIButton(type: .system)
     private let settings = SharedSettings.shared
     private let lexicon = Lexicon.shared
     private let clipboard = ClipboardStore()
@@ -62,6 +68,8 @@ final class KeyboardViewController: UIInputViewController {
         clipboard.configure(store: store)
 
         keyboardView.delegate = self
+        keyboardLeading = keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
+        keyboardTrailing = keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel]
         for v in [suggestionBar, keyboardView, searchPanel] + overlays {
             v.translatesAutoresizingMaskIntoConstraints = false
@@ -75,8 +83,8 @@ final class KeyboardViewController: UIInputViewController {
             searchPanel.trailingAnchor.constraint(equalTo: suggestionBar.trailingAnchor),
             searchPanel.topAnchor.constraint(equalTo: suggestionBar.topAnchor),
             searchPanel.bottomAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
-            keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            keyboardLeading,
+            keyboardTrailing,
             keyboardView.topAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
             keyboardView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
@@ -94,6 +102,7 @@ final class KeyboardViewController: UIInputViewController {
             p.isHidden = true
         }
         wireBars()
+        setUpOneHandedStrip()
         requestSupplementaryLexicon { [weak self] lexicon in
             var map: [String: String] = [:]
             for entry in lexicon.entries where entry.userInput != entry.documentText {
@@ -173,6 +182,9 @@ final class KeyboardViewController: UIInputViewController {
             case .translate: self.showPanel(.translate)
             case .calculator: self.showPanel(.calculator)
             case .contacts: self.showPanel(.contacts)
+            case .oneHanded:
+                self.settings.oneHandedMode = self.settings.oneHandedMode == "off" ? "right" : "off"
+                self.showPanel(.keys)
             case .settings: self.showPanel(.settings)
             }
         }
@@ -269,6 +281,53 @@ final class KeyboardViewController: UIInputViewController {
         updateHeight()
         if isSearching { reload(force: true); updateSearch() }
         if newPanel == .keys { reload() }
+        view.setNeedsLayout()
+    }
+
+    // MARK: One-handed mode
+
+    private func setUpOneHandedStrip() {
+        let config = UIImage.SymbolConfiguration(pointSize: 20, weight: .regular)
+        switchSideButton.setImage(UIImage(systemName: "arrow.left.and.right", withConfiguration: config), for: .normal)
+        expandButton.setImage(UIImage(systemName: "arrow.up.left.and.arrow.down.right", withConfiguration: config), for: .normal)
+        switchSideButton.addTarget(self, action: #selector(switchOneHandedSide), for: .touchUpInside)
+        expandButton.addTarget(self, action: #selector(exitOneHanded), for: .touchUpInside)
+        oneHandedStrip.axis = .vertical
+        oneHandedStrip.distribution = .fillEqually
+        oneHandedStrip.addArrangedSubview(expandButton)
+        oneHandedStrip.addArrangedSubview(switchSideButton)
+        view.addSubview(oneHandedStrip)
+    }
+
+    @objc private func switchOneHandedSide() {
+        settings.oneHandedMode = settings.oneHandedMode == "right" ? "left" : "right"
+        view.setNeedsLayout()
+    }
+
+    @objc private func exitOneHanded() {
+        settings.oneHandedMode = "off"
+        view.setNeedsLayout()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        let mode = settings.oneHandedMode
+        let active = mode != "off" && (panel == .keys || isSearching)
+        let gap = active ? floor(view.bounds.width * 0.16) : 0
+        let leading = mode == "right" ? gap : 0
+        let trailing = mode == "left" ? -gap : 0
+        if keyboardLeading.constant != leading || keyboardTrailing.constant != trailing {
+            keyboardLeading.constant = leading
+            keyboardTrailing.constant = trailing
+            keyboardView.setNeedsLayout()
+        }
+        oneHandedStrip.isHidden = !active
+        let tint = KeyboardTheme.make(dark: isDark).text
+        switchSideButton.tintColor = tint
+        expandButton.tintColor = tint
+        let top = keyboardView.frame.minY
+        let x = mode == "right" ? 0 : view.bounds.width - gap
+        oneHandedStrip.frame = CGRect(x: x, y: top + 20, width: gap, height: max(0, view.bounds.height - top - 40))
     }
 
     // MARK: Contacts search / translation
@@ -409,6 +468,7 @@ final class KeyboardViewController: UIInputViewController {
             updateHeight()
         }
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
+        lexicon.blockOffensive = settings.bool(.blockOffensive)
         updateSuggestions()
     }
 
@@ -530,6 +590,12 @@ final class KeyboardViewController: UIInputViewController {
             if guesses.count > 1 { items.append(guesses[1]) }
         }
         if items.isEmpty { items = [Suggestion(title: "\"\(word)\"", value: word, primary: false)] }
+        // Emoji for the word (e.g. حب → ❤️) takes the right-hand slot.
+        if settings.bool(.emojiSuggestions),
+           let emoji = WordExtras.emoji[Lexicon.normalize(word)]
+            ?? ranked.first.flatMap({ WordExtras.emoji[Lexicon.normalize($0.word)] }) {
+            items = Array(items.prefix(2)) + [Suggestion(title: emoji, value: emojiMarker + emoji, primary: false)]
+        }
         suggestionBar.show(arrange(items))
     }
 
@@ -539,7 +605,20 @@ final class KeyboardViewController: UIInputViewController {
         return [items[1], items[0], items[2]]
     }
 
+    private let emojiMarker = "\u{1}"
+
     private func applySuggestion(_ value: String) {
+        if value.hasPrefix(emojiMarker) {
+            // Emoji goes after the word, which stays as typed.
+            let emoji = String(value.dropFirst(emojiMarker.count))
+            let word = currentWord
+            if !word.isEmpty { lexicon.learn(word, after: previousWord(skipping: word)) }
+            proxy.insertText(" " + emoji + " ")
+            addRecent(emoji)
+            feedback(for: .character(emoji))
+            reload()
+            return
+        }
         let word = expansion(for: currentToken) != nil ? currentToken : currentWord
         let previous = previousWord(skipping: word)
         for _ in 0..<word.count { proxy.deleteBackward() }

@@ -25,6 +25,8 @@ final class Lexicon {
     private var bigrams: [String: [String: Int]] = [:]
     private var store: UserDefaults = .standard
     private var unsaved = 0
+    /// Keeps rude words out of suggestions (they can still be typed).
+    var blockOffensive = true
 
     private static let learnedKey = "learnedWords"
     private static let bigramsKey = "learnedBigrams"
@@ -173,6 +175,7 @@ final class Lexicon {
         guard !typed.isEmpty else { return [] }
         var best: [String: Candidate] = [:]
         func add(_ word: String, _ score: Double, _ kind: Candidate.Kind) {
+            if blockOffensive && kind != .exact && WordExtras.isBlocked(word) { return }
             let w = Lexicon.matchCase(word, like: typed)
             if let old = best[w.lowercased()], old.score >= score { return }
             best[w.lowercased()] = Candidate(word: w, score: score, kind: kind)
@@ -278,7 +281,7 @@ final class Lexicon {
     /// Words the user tends to type after `previous`.
     func nextWords(after previous: String, limit: Int) -> [String] {
         guard let followers = bigrams[key(previous)] else { return [] }
-        return followers.filter { $0.value >= 1 }.sorted { $0.value > $1.value }.prefix(limit).map { $0.key }
+        return followers.filter { $0.value >= 1 && !(blockOffensive && WordExtras.isBlocked($0.key)) }.sorted { $0.value > $1.value }.prefix(limit).map { $0.key }
     }
 
     /// Every word glide typing may produce, with how common it is.
@@ -289,6 +292,7 @@ final class Lexicon {
         for (word, uses) in learned where uses >= 2 && Lexicon.language(of: word) == language && counts[language]?[word] == nil {
             list.append((word: word, count: min(top, uses * 1000)))
         }
+        if blockOffensive { list.removeAll { WordExtras.isBlocked($0.word) } }
         return list
     }
 

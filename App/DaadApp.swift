@@ -86,6 +86,9 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.suggestions.rawValue, store: SharedSettings.store) private var suggestions = true
     @AppStorage(DaadSetting.autocorrect.rawValue, store: SharedSettings.store) private var autocorrect = false
     @AppStorage(DaadSetting.glideTyping.rawValue, store: SharedSettings.store) private var glideTyping = true
+    @AppStorage(DaadSetting.emojiSuggestions.rawValue, store: SharedSettings.store) private var emojiSuggestions = true
+    @AppStorage(DaadSetting.blockOffensive.rawValue, store: SharedSettings.store) private var blockOffensive = true
+    @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
     @State private var confirmClear = false
     @State private var cleared = false
 
@@ -100,6 +103,13 @@ struct SettingsView: View {
                     Toggle("اقتراح الكلمات", isOn: $suggestions)
                     Toggle("التصحيح التلقائي", isOn: $autocorrect)
                     Toggle("الكتابة بالسحب", isOn: $glideTyping)
+                    Toggle("اقتراح إيموجي", isOn: $emojiSuggestions)
+                    Toggle("منع الكلمات البذيئة من الاقتراحات", isOn: $blockOffensive)
+                    Picker("وضع اليد الواحدة", selection: $oneHandedMode) {
+                        Text("مقفول").tag("off")
+                        Text("يمين").tag("right")
+                        Text("شمال").tag("left")
+                    }
                     Toggle("نقطة بضغطتين على المسافة", isOn: $quickPeriod)
                     Toggle("حرف كابيتال أول الجملة (English)", isOn: $autoCapitalize)
                     Toggle("علامة اتجاه عربي أول النص", isOn: $rtlMark)

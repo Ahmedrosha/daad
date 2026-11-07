@@ -13,6 +13,8 @@ enum DaadSetting: String, CaseIterable {
     case suggestions     // شريط الاقتراحات
     case autocorrect     // التصحيح التلقائي
     case glideTyping     // الكتابة بالسحب
+    case blockOffensive  // منع الكلمات البذيئة من الاقتراحات
+    case emojiSuggestions // اقتراح إيموجي
 
     var defaultValue: Bool {
         switch self {
@@ -52,6 +54,13 @@ final class SharedSettings {
         static let shortcuts = "textShortcuts"
         static let shortcutsSeeded = "textShortcutsSeeded"
         static let pinned = "pinnedTexts"
+        static let oneHanded = "oneHandedMode"
+    }
+
+    /// "off", "left" or "right": the keyboard shrinks toward one side.
+    var oneHandedMode: String {
+        get { defaults.string(forKey: Keys.oneHanded) ?? "off" }
+        set { defaults.set(newValue, forKey: Keys.oneHanded) }
     }
 
     static let defaultShortcuts: [String: String] = [
