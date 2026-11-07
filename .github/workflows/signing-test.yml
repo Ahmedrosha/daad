@@ -123,4 +123,5 @@ jobs:
           mkdir -p "$RUNNER_TEMP/ipa" && cd "$RUNNER_TEMP/ipa" && unzip -q "$IPA"
           APP=$(ls -d Payload/*.app)
           codesign -dvv "$APP" 2>&1 | grep -E "Authority|TeamIdentifier" | head -3
-          codesign -d --entitlements :- "$APP/PlugIns/DaadKeyboard.appex" 2>/dev/null | grep -A2 application-groups
+          echo "--- app entitlements"; codesign -d --entitlements - --xml "$APP" 2>/dev/null | plutil -p - || true
+          echo "--- keyboard entitlements"; codesign -d --entitlements - --xml "$APP/PlugIns/DaadKeyboard.appex" 2>/dev/null | plutil -p - || true
