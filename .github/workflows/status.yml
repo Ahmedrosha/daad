@@ -1,0 +1,41 @@
+name: TestFlight build status (read-only)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  status:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ask App Store Connect about recent builds
+        env:
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+          KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          printf '%s' "$KEY" > key.p8
+          ruby -ropenssl -rbase64 -rjson -rnet/http -e '
+            b64 = ->(s) { Base64.urlsafe_encode64(s, padding: false) }
+            key = OpenSSL::PKey::EC.new(File.read("key.p8"))
+            now = Time.now.to_i
+            input = b64.(JSON.generate(alg: "ES256", kid: ENV["KID"].strip, typ: "JWT")) + "." +
+                    b64.(JSON.generate(iss: ENV["ISS"].strip, iat: now, exp: now + 600, aud: "appstoreconnect-v1"))
+            der = OpenSSL::ASN1.decode(key.sign(OpenSSL::Digest::SHA256.new, input))
+            token = input + "." + b64.(der.value.map { |v| v.value.to_s(2).rjust(32, "\0") }.join)
+            get = lambda do |path|
+              uri = URI("https://api.appstoreconnect.apple.com" + path)
+              req = Net::HTTP::Get.new(uri)
+              req["Authorization"] = "Bearer #{token}"
+              JSON.parse(Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |h| h.request(req) }.body)
+            end
+            app = get.("/v1/apps?filter[bundleId]=com.daad.keyboard")["data"].first
+            abort "App not found" unless app
+            builds = get.("/v1/builds?filter[app]=#{app["id"]}&sort=-uploadedDate&limit=6&include=buildBetaDetail")
+            details = (builds["included"] || []).to_h { |i| [i["id"], i["attributes"]] }
+            builds["data"].each do |b|
+              a = b["attributes"]
+              detail_id = b.dig("relationships", "buildBetaDetail", "data", "id")
+              beta = details[detail_id] || {}
+              puts "build #{a["version"]}: processing=#{a["processingState"]} uploaded=#{a["uploadedDate"]} expired=#{a["expired"]} encryptionInfoNeeded=#{a["usesNonExemptEncryption"].nil?} internalTesting=#{beta["internalBuildState"]}"
+            end
+          '
