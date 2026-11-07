@@ -49,6 +49,39 @@ final class SharedSettings {
     private enum Keys {
         static let language = "language"
         static let clearLearned = "clearLearnedRequested"
+        static let shortcuts = "textShortcuts"
+        static let shortcutsSeeded = "textShortcutsSeeded"
+        static let pinned = "pinnedTexts"
+    }
+
+    static let defaultShortcuts: [String: String] = [
+        "omw": "on my way",
+        "brb": "be right back",
+        "idk": "I don't know",
+        "thx": "thanks",
+        "انشا": "إن شاء الله",
+        "ماشا": "ما شاء الله",
+        "سلامو": "السلام عليكم ورحمة الله وبركاته",
+        "جزك": "جزاك الله خيرًا",
+        "حمدلله": "الحمد لله",
+    ]
+
+    /// Typed shortcut → text it becomes ("omw" → "on my way"). Seeded with examples once.
+    var shortcuts: [String: String] {
+        get {
+            if !defaults.bool(forKey: Keys.shortcutsSeeded) {
+                defaults.set(SharedSettings.defaultShortcuts, forKey: Keys.shortcuts)
+                defaults.set(true, forKey: Keys.shortcutsSeeded)
+            }
+            return defaults.dictionary(forKey: Keys.shortcuts) as? [String: String] ?? [:]
+        }
+        set { defaults.set(newValue, forKey: Keys.shortcuts) }
+    }
+
+    /// Texts pinned in the clipboard; always shown at the top.
+    var pinnedTexts: [String] {
+        get { defaults.stringArray(forKey: Keys.pinned) ?? [] }
+        set { defaults.set(newValue, forKey: Keys.pinned) }
     }
 
     /// The app asks the keyboard to forget learned words (the keyboard owns that data).

@@ -114,6 +114,14 @@ struct SettingsView: View {
                     Text("الاهتزاز، والحافظة، ووصول الإعدادات دي للكيبورد محتاجين تفعيل Allow Full Access.")
                 }
                 Section {
+                    NavigationLink("الاختصارات") { ShortcutsView() }
+                    NavigationLink("المحفوظات في الحافظة") { PinnedTextsView() }
+                } header: {
+                    Text("النصوص")
+                } footer: {
+                    Text("مثلاً اكتب @@ ودوس مسافة يتكتب إيميلك.")
+                }
+                Section {
                     ContactsAccessRow()
                     if #available(iOS 18.0, *) {
                         TranslationDownloadRow()
@@ -188,5 +196,116 @@ private struct TranslationDownloadRow: View {
                 done = false
             }
         }
+    }
+}
+
+private struct ShortcutItem: Identifiable {
+    let key: String
+    let value: String
+    var id: String { key }
+}
+
+private struct ShortcutsView: View {
+    @State private var items: [ShortcutItem] = []
+    @State private var newKey = ""
+    @State private var newValue = ""
+
+    var body: some View {
+        Form {
+            Section("اختصار جديد") {
+                TextField("الاختصار (مثلاً @@)", text: $newKey)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                TextField("النص (مثلاً إيميلك)", text: $newValue, axis: .vertical)
+                    .lineLimit(1...5)
+                Button("إضافة", action: add)
+                    .disabled(newKey.trimmingCharacters(in: .whitespaces).isEmpty || newValue.isEmpty)
+            }
+            Section {
+                ForEach(items) { item in
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(item.key).font(.headline)
+                        Text(item.value).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }
+                .onDelete(perform: delete)
+            } header: {
+                Text("الاختصارات")
+            } footer: {
+                Text("اكتب الاختصار في أي مكان ودوس مسافة يتبدّل بالنص. اختصارات الـ iPhone نفسه (Text Replacement) بتشتغل كمان. محتاج Allow Full Access.")
+            }
+        }
+        .navigationTitle("الاختصارات")
+        .onAppear(perform: load)
+    }
+
+    private func load() {
+        items = SharedSettings.shared.shortcuts
+            .sorted { $0.key < $1.key }
+            .map { ShortcutItem(key: $0.key, value: $0.value) }
+    }
+
+    private func add() {
+        let key = newKey.trimmingCharacters(in: .whitespaces)
+        guard !key.isEmpty, !key.contains(" "), !newValue.isEmpty else { return }
+        var map = SharedSettings.shared.shortcuts
+        map[key] = newValue
+        SharedSettings.shared.shortcuts = map
+        newKey = ""
+        newValue = ""
+        load()
+    }
+
+    private func delete(_ offsets: IndexSet) {
+        var map = SharedSettings.shared.shortcuts
+        for i in offsets { map[items[i].key] = nil }
+        SharedSettings.shared.shortcuts = map
+        load()
+    }
+}
+
+private struct PinnedTextsView: View {
+    @State private var items: [String] = []
+    @State private var newText = ""
+
+    var body: some View {
+        Form {
+            Section("نص جديد") {
+                TextField("مثلاً عنوانك أو رقم حسابك", text: $newText, axis: .vertical)
+                    .lineLimit(1...6)
+                Button("حفظ", action: add)
+                    .disabled(newText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            Section {
+                ForEach(items, id: \.self) { Text($0).lineLimit(3) }
+                    .onDelete(perform: delete)
+                    .onMove(perform: move)
+            } header: {
+                Text("المحفوظات")
+            } footer: {
+                Text("بتظهر على طول فوق في الحافظة جوه الكيبورد. وتقدر كمان تثبّت أي حاجة نسختها بسحبة عليها في الكيبورد.")
+            }
+        }
+        .navigationTitle("المحفوظات")
+        .toolbar { EditButton() }
+        .onAppear { items = SharedSettings.shared.pinnedTexts }
+    }
+
+    private func add() {
+        let text = newText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty, !items.contains(text) else { return }
+        items.insert(text, at: 0)
+        SharedSettings.shared.pinnedTexts = items
+        newText = ""
+    }
+
+    private func delete(_ offsets: IndexSet) {
+        items.remove(atOffsets: offsets)
+        SharedSettings.shared.pinnedTexts = items
+    }
+
+    private func move(_ source: IndexSet, _ destination: Int) {
+        items.move(fromOffsets: source, toOffset: destination)
+        SharedSettings.shared.pinnedTexts = items
     }
 }

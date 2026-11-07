@@ -8,6 +8,21 @@ final class ClipboardStore {
 
     private var store: UserDefaults = .standard
     private(set) var items: [String] = []
+    var pinned: [String] { SharedSettings.shared.pinnedTexts }
+
+    func pin(at index: Int) {
+        guard items.indices.contains(index) else { return }
+        var list = pinned
+        if !list.contains(items[index]) { list.insert(items[index], at: 0) }
+        SharedSettings.shared.pinnedTexts = list
+    }
+
+    func unpin(at index: Int) {
+        var list = pinned
+        guard list.indices.contains(index) else { return }
+        list.remove(at: index)
+        SharedSettings.shared.pinnedTexts = list
+    }
 
     func configure(store: UserDefaults) {
         self.store = store
@@ -45,10 +60,14 @@ final class ClipboardStore {
 final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelegate {
     var onInsert: ((String) -> Void)?
     var onDelete: ((Int) -> Void)?
+    var onPin: ((Int) -> Void)?
+    var onUnpin: ((Int) -> Void)?
     var onClear: (() -> Void)?
     var onClose: (() -> Void)?
 
     private var items: [String] = []
+    private var pinned: [String] = []
+    private var arabic = true
     private let header = UIView()
     private let titleLabel = UILabel()
     private let closeButton = UIButton(type: .system)
@@ -85,9 +104,11 @@ final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelega
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
-    func configure(theme: KeyboardTheme, items: [String], arabic: Bool, fullAccess: Bool) {
+    func configure(theme: KeyboardTheme, items: [String], pinned: [String], arabic: Bool, fullAccess: Bool) {
         self.theme = theme
         self.items = items
+        self.pinned = pinned
+        self.arabic = arabic
         backgroundColor = theme.background
         titleLabel.textColor = theme.text
         titleLabel.text = arabic ? "الحافظة" : "Clipboard"
@@ -101,7 +122,7 @@ final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelega
             messageLabel.text = arabic
                 ? "فعّل Allow Full Access من إعدادات الكيبورد عشان الحافظة تشتغل"
                 : "Turn on Allow Full Access in keyboard settings to use the clipboard"
-        } else if items.isEmpty {
+        } else if items.isEmpty && pinned.isEmpty {
             messageLabel.text = arabic ? "انسخ أي نص وهيظهر هنا" : "Copied text will appear here"
         } else {
             messageLabel.text = nil
@@ -121,12 +142,25 @@ final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelega
         messageLabel.frame = table.frame.insetBy(dx: 24, dy: 12)
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { items.count }
+    func numberOfSections(in tableView: UITableView) -> Int { 2 }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        section == 0 ? pinned.count : items.count
+    }
+
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        if section == 0 { return pinned.isEmpty ? nil : (arabic ? "📌 محفوظ" : "📌 Pinned") }
+        return items.isEmpty ? nil : (arabic ? "آخر ما نسخته" : "Recent")
+    }
+
+    private func text(at indexPath: IndexPath) -> String {
+        indexPath.section == 0 ? pinned[indexPath.row] : items[indexPath.row]
+    }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "c", for: indexPath)
         var content = cell.defaultContentConfiguration()
-        content.text = items[indexPath.row]
+        content.text = text(at: indexPath)
         content.textProperties.numberOfLines = 2
         content.textProperties.color = theme.text
         cell.contentConfiguration = content
@@ -136,17 +170,30 @@ final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelega
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        onInsert?(items[indexPath.row])
+        onInsert?(text(at: indexPath))
     }
 
     func tableView(_ tableView: UITableView, trailingSwipeActionsConfigurationForRowAt indexPath: IndexPath) -> UISwipeActionsConfiguration? {
+        if indexPath.section == 0 {
+            let unpin = UIContextualAction(style: .normal, title: arabic ? "إلغاء التثبيت" : "Unpin") { [weak self] _, _, done in
+                self?.onUnpin?(indexPath.row)
+                done(true)
+            }
+            unpin.image = UIImage(systemName: "pin.slash")
+            return UISwipeActionsConfiguration(actions: [unpin])
+        }
         let delete = UIContextualAction(style: .destructive, title: nil) { [weak self] _, _, done in
-            guard let self else { return done(false) }
-            self.onDelete?(indexPath.row)
+            self?.onDelete?(indexPath.row)
             done(true)
         }
         delete.image = UIImage(systemName: "trash")
-        return UISwipeActionsConfiguration(actions: [delete])
+        let pin = UIContextualAction(style: .normal, title: arabic ? "تثبيت" : "Pin") { [weak self] _, _, done in
+            self?.onPin?(indexPath.row)
+            done(true)
+        }
+        pin.image = UIImage(systemName: "pin")
+        pin.backgroundColor = .systemOrange
+        return UISwipeActionsConfiguration(actions: [delete, pin])
     }
 
     @objc private func closeTapped() { onClose?() }

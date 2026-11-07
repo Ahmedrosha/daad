@@ -40,6 +40,9 @@ final class KeyboardViewController: UIInputViewController {
 
     private let barHeight: CGFloat = 42
     private let recentsKey = "recentEmojis"
+    /// Shortcuts from the app plus the iPhone's own Text Replacements.
+    private var textShortcuts: [String: String] = [:]
+    private var systemShortcuts: [String: String] = [:]
 
     private lazy var tapHaptic = UIImpactFeedbackGenerator(style: .light)
     private lazy var tickHaptic = UISelectionFeedbackGenerator()
@@ -89,7 +92,20 @@ final class KeyboardViewController: UIInputViewController {
             p.isHidden = true
         }
         wireBars()
+        requestSupplementaryLexicon { [weak self] lexicon in
+            var map: [String: String] = [:]
+            for entry in lexicon.entries where entry.userInput != entry.documentText {
+                map[entry.userInput] = entry.documentText
+            }
+            self?.systemShortcuts = map
+            self?.refreshShortcuts()
+        }
+        refreshShortcuts()
         reload(force: true)
+    }
+
+    private func refreshShortcuts() {
+        textShortcuts = systemShortcuts.merging(settings.shortcuts) { _, mine in mine }
     }
 
     override func viewWillAppear(_ animated: Bool) {
@@ -98,6 +114,7 @@ final class KeyboardViewController: UIInputViewController {
         showPanel(.keys)
         if hasFullAccess && settings.consumeClearLearnedRequest() { lexicon.clearLearned() }
         if hasFullAccess { clipboard.captureIfChanged() }
+        refreshShortcuts()
         updateAutoShift()
         reload(force: true)   // picks up changes made in the app's Settings screen
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
@@ -193,6 +210,14 @@ final class KeyboardViewController: UIInputViewController {
         }
         clipboardPanel.onDelete = { [weak self] index in
             self?.clipboard.remove(at: index)
+            self?.configureClipboardPanel()
+        }
+        clipboardPanel.onPin = { [weak self] index in
+            self?.clipboard.pin(at: index)
+            self?.configureClipboardPanel()
+        }
+        clipboardPanel.onUnpin = { [weak self] index in
+            self?.clipboard.unpin(at: index)
             self?.configureClipboardPanel()
         }
         clipboardPanel.onClear = { [weak self] in
@@ -329,7 +354,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func configureClipboardPanel() {
-        clipboardPanel.configure(theme: .make(dark: isDark), items: clipboard.items,
+        clipboardPanel.configure(theme: .make(dark: isDark), items: clipboard.items, pinned: clipboard.pinned,
                                  arabic: language == .arabic, fullAccess: hasFullAccess)
     }
 
@@ -420,6 +445,36 @@ final class KeyboardViewController: UIInputViewController {
         ch.unicodeScalars.allSatisfy { $0.properties.generalCategory == .nonspacingMark }
     }
 
+    /// Everything typed since the last space (shortcuts like "@@" are not letters).
+    private var currentToken: String {
+        guard let before = proxy.documentContextBeforeInput else { return "" }
+        var token = ""
+        for ch in before.reversed() {
+            guard !ch.isWhitespace else { break }
+            token.insert(ch, at: token.startIndex)
+        }
+        return token
+    }
+
+    /// The word before the one being typed (used to learn which word usually follows which).
+    private func previousWord(skipping current: String) -> String? {
+        guard var before = proxy.documentContextBeforeInput else { return nil }
+        if !current.isEmpty, before.hasSuffix(current) { before.removeLast(current.count) }
+        while let last = before.last, last.isWhitespace { before.removeLast() }
+        var word = ""
+        for ch in before.reversed() {
+            guard ch.isLetter || ch == "'" else { break }
+            word.insert(ch, at: word.startIndex)
+        }
+        return word.isEmpty ? nil : word
+    }
+
+    private func expansion(for token: String) -> String? {
+        guard !token.isEmpty else { return nil }
+        if let exact = textShortcuts[token] { return exact }
+        return textShortcuts.first { $0.key.lowercased() == token.lowercased() }?.value
+    }
+
     private func updateSuggestions() {
         guard panel == .keys else { return }
         let word = currentWord
@@ -427,8 +482,26 @@ final class KeyboardViewController: UIInputViewController {
             lastGlideWord = nil
             glideAlternatives = []
         }
-        guard settings.bool(.suggestions), !word.isEmpty else {
+        guard settings.bool(.suggestions) else {
             suggestionBar.showTools()
+            return
+        }
+        // A shortcut being typed shows what it will turn into.
+        let token = currentToken
+        if let text = expansion(for: token) {
+            suggestionBar.show([Suggestion(title: text, value: text, primary: true),
+                                Suggestion(title: "\"\(token)\"", value: token, primary: false)])
+            return
+        }
+        if word.isEmpty {
+            // After a space: words the user usually types next.
+            if (proxy.documentContextBeforeInput ?? "").last == " ",
+               let previous = previousWord(skipping: ""),
+               case let next = lexicon.nextWords(after: previous, limit: 3), !next.isEmpty {
+                suggestionBar.show(arrange(next.map { Suggestion(title: $0, value: $0, primary: false) }))
+            } else {
+                suggestionBar.showTools()
+            }
             return
         }
         if lastGlideWord == word, glideAlternatives.count > 1 {
@@ -440,29 +513,21 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         let lang = Lexicon.language(of: word)
-        let known = lexicon.isKnown(word, language: lang)
-        let completions = lexicon.completions(for: word, language: lang, limit: 3)
-        let fixes = known ? [] : lexicon.corrections(for: word, language: lang, limit: 2)
+        let ranked = lexicon.rank(word, language: lang, limit: 3)
+        let known = ranked.contains { $0.kind == .exact }
+        let fix = settings.bool(.autocorrect) ? lexicon.autocorrection(for: word, language: lang) : nil
 
         var items: [Suggestion] = []
-        if let fix = fixes.first, settings.bool(.autocorrect) {
-            // Middle = what space will apply; the typed word stays available in quotes.
-            items.append(Suggestion(title: fix, value: fix, primary: true))
-            items.append(Suggestion(title: "\"\(word)\"", value: word, primary: false))
-            if let c = completions.first(where: { $0 != fix }) ?? fixes.dropFirst().first {
-                items.append(Suggestion(title: c, value: c, primary: false))
-            }
+        if known {
+            items = ranked.map { Suggestion(title: $0.word, value: $0.word, primary: false) }
         } else {
-            var pool = known ? [word] : []
-            pool += fixes
-            pool += completions
-            var seen = Set<String>()
-            for w in pool where seen.insert(w.lowercased()).inserted {
-                items.append(Suggestion(title: w, value: w, primary: false))
-                if items.count == 3 { break }
-            }
-            if items.isEmpty { items = [Suggestion(title: "\"\(word)\"", value: word, primary: false)] }
+            // Unknown word: keep what was typed on the side, best guesses in the middle.
+            let guesses = ranked.prefix(2).map { Suggestion(title: $0.word, value: $0.word, primary: $0.word == fix) }
+            items = guesses.isEmpty ? [] : [guesses[0]]
+            items.append(Suggestion(title: "\"\(word)\"", value: word, primary: false))
+            if guesses.count > 1 { items.append(guesses[1]) }
         }
+        if items.isEmpty { items = [Suggestion(title: "\"\(word)\"", value: word, primary: false)] }
         suggestionBar.show(arrange(items))
     }
 
@@ -473,10 +538,11 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func applySuggestion(_ value: String) {
-        let word = currentWord
+        let word = expansion(for: currentToken) != nil ? currentToken : currentWord
+        let previous = previousWord(skipping: word)
         for _ in 0..<word.count { proxy.deleteBackward() }
         proxy.insertText(value + " ")
-        lexicon.learn(value)
+        if !value.contains(" ") { lexicon.learn(value, after: previous) }
         lastCorrection = nil
         lastGlideWord = nil
         glideAlternatives = []
@@ -486,21 +552,27 @@ final class KeyboardViewController: UIInputViewController {
         reload()
     }
 
-    /// Before a space or new line: learn the word, or fix it when autocorrect is on.
+    /// Before a space or new line: expand a shortcut, fix the word (autocorrect), and learn it.
     private func commitCurrentWord() {
-        let word = currentWord
         lastCorrection = nil
+        let token = currentToken
+        if let text = expansion(for: token) {
+            for _ in 0..<token.count { proxy.deleteBackward() }
+            proxy.insertText(text)
+            return
+        }
+        let word = currentWord
         guard !word.isEmpty else { return }
+        let previous = previousWord(skipping: word)
         let lang = Lexicon.language(of: word)
         if settings.bool(.autocorrect), lastGlideWord != word,
-           !lexicon.isKnown(word, language: lang),
-           let fix = lexicon.corrections(for: word, language: lang, limit: 1).first {
+           let fix = lexicon.autocorrection(for: word, language: lang) {
             for _ in 0..<word.count { proxy.deleteBackward() }
             proxy.insertText(fix)
             lastCorrection = (word, fix)
-            lexicon.learn(fix)
+            lexicon.learn(fix, after: previous)
         } else {
-            lexicon.learn(word)
+            lexicon.learn(word, after: previous)
         }
     }
 
@@ -522,7 +594,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func commitWordBeforePunctuation() {
         let word = currentWord
-        if !word.isEmpty { lexicon.learn(word) }
+        if !word.isEmpty { lexicon.learn(word, after: previousWord(skipping: word)) }
     }
 
     private func updateAutoShift() {
