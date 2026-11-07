@@ -30,6 +30,7 @@ targets:
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false
+        NSContactsUsageDescription: ضاد بيستخدم جهات الاتصال عشان تقدر تبحث عن رقم أو إيميل وتكتبه من الكيبورد. البيانات مابتطلعش من تليفونك.
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     entitlements:
@@ -55,6 +56,7 @@ targets:
       path: Keyboard/Info.plist
       properties:
         CFBundleDisplayName: ضاد
+        NSContactsUsageDescription: ضاد بيستخدم جهات الاتصال عشان تقدر تبحث عن رقم أو إيميل وتكتبه من الكيبورد. البيانات مابتطلعش من تليفونك.
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController

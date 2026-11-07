@@ -1,4 +1,8 @@
 import SwiftUI
+import Contacts
+#if canImport(Translation)
+import Translation
+#endif
 
 @main
 struct DaadApp: App {
@@ -110,6 +114,18 @@ struct SettingsView: View {
                     Text("الاهتزاز، والحافظة، ووصول الإعدادات دي للكيبورد محتاجين تفعيل Allow Full Access.")
                 }
                 Section {
+                    ContactsAccessRow()
+                    if #available(iOS 18.0, *) {
+                        TranslationDownloadRow()
+                    } else {
+                        Text("الترجمة محتاجة iOS 26 أو أحدث").foregroundStyle(.secondary)
+                    }
+                } header: {
+                    Text("الأدوات")
+                } footer: {
+                    Text("الترجمة بتشتغل على التليفون من غير نت بعد تنزيل اللغات، وجوه الكيبورد محتاجة iOS 26.")
+                }
+                Section {
                     Button(cleared ? "اتمسح ✓" : "مسح الكلمات اللي اتعلمها الكيبورد", role: .destructive) {
                         confirmClear = true
                     }
@@ -127,6 +143,50 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("الإعدادات")
+        }
+    }
+}
+
+private struct ContactsAccessRow: View {
+    @State private var status = CNContactStore.authorizationStatus(for: .contacts)
+
+    var body: some View {
+        if status == .authorized {
+            Label("الوصول لجهات الاتصال مفعّل", systemImage: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+        } else {
+            Button {
+                CNContactStore().requestAccess(for: .contacts) { _, _ in
+                    DispatchQueue.main.async { status = CNContactStore.authorizationStatus(for: .contacts) }
+                }
+            } label: {
+                Label("السماح بالوصول لجهات الاتصال", systemImage: "person.crop.circle")
+            }
+        }
+    }
+}
+
+@available(iOS 18.0, *)
+private struct TranslationDownloadRow: View {
+    @State private var configuration: TranslationSession.Configuration?
+    @State private var done = false
+
+    var body: some View {
+        Button {
+            configuration = TranslationSession.Configuration(
+                source: Locale.Language(identifier: "ar"),
+                target: Locale.Language(identifier: "en"))
+        } label: {
+            Label(done ? "لغات الترجمة جاهزة ✓" : "تنزيل لغات الترجمة (عربي / English)",
+                  systemImage: "arrow.down.circle")
+        }
+        .translationTask(configuration) { session in
+            do {
+                try await session.prepareTranslation()
+                done = true
+            } catch {
+                done = false
+            }
         }
     }
 }

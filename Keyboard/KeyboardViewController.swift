@@ -6,13 +6,23 @@ final class KeyboardViewController: UIInputViewController {
     private let keyboardView = KeyboardView()
     private let emojiPanel = EmojiPanelView()
     private let clipboardPanel = ClipboardPanelView()
+    private let toolsPanel = ToolsPanelView()
+    private let calculatorPanel = CalculatorPanelView()
+    private let settingsPanel = SettingsPanelView()
+    private let searchPanel = SearchPanelView()
     private var heightConstraint: NSLayoutConstraint?
+    private var barHeightConstraint: NSLayoutConstraint?
     private let settings = SharedSettings.shared
     private let lexicon = Lexicon.shared
     private let clipboard = ClipboardStore()
 
-    private enum Panel { case keys, emoji, clipboard }
+    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, contacts, translate }
     private var panel: Panel = .keys
+    /// Contacts search and translation are typed with the keyboard's own keys.
+    private var isSearching: Bool { panel == .contacts || panel == .translate }
+    private var query = ""
+    private var translateWork: DispatchWorkItem?
+    private let searchHeight: CGFloat = 190
 
     private var language: DaadLanguage = .arabic
     private var mode: KeyboardMode = .letters
@@ -47,7 +57,8 @@ final class KeyboardViewController: UIInputViewController {
         clipboard.configure(store: store)
 
         keyboardView.delegate = self
-        for v in [suggestionBar, keyboardView, emojiPanel, clipboardPanel] as [UIView] {
+        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel]
+        for v in [suggestionBar, keyboardView, searchPanel] + overlays {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
         }
@@ -55,13 +66,20 @@ final class KeyboardViewController: UIInputViewController {
             suggestionBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             suggestionBar.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             suggestionBar.topAnchor.constraint(equalTo: view.topAnchor),
-            suggestionBar.heightAnchor.constraint(equalToConstant: barHeight),
+            searchPanel.leadingAnchor.constraint(equalTo: suggestionBar.leadingAnchor),
+            searchPanel.trailingAnchor.constraint(equalTo: suggestionBar.trailingAnchor),
+            searchPanel.topAnchor.constraint(equalTo: suggestionBar.topAnchor),
+            searchPanel.bottomAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
             keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             keyboardView.topAnchor.constraint(equalTo: suggestionBar.bottomAnchor),
             keyboardView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        for p in [emojiPanel, clipboardPanel] as [UIView] {
+        let barConstraint = suggestionBar.heightAnchor.constraint(equalToConstant: barHeight)
+        barConstraint.isActive = true
+        barHeightConstraint = barConstraint
+        searchPanel.isHidden = true
+        for p in overlays {
             NSLayoutConstraint.activate([
                 p.leadingAnchor.constraint(equalTo: view.leadingAnchor),
                 p.trailingAnchor.constraint(equalTo: view.trailingAnchor),
@@ -124,6 +142,36 @@ final class KeyboardViewController: UIInputViewController {
         suggestionBar.onDismiss = { [weak self] in self?.dismissKeyboard() }
         suggestionBar.onEmoji = { [weak self] in self?.showPanel(.emoji) }
         suggestionBar.onClipboard = { [weak self] in self?.showPanel(.clipboard) }
+        suggestionBar.onTools = { [weak self] in self?.showPanel(.tools) }
+
+        toolsPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        toolsPanel.onSelect = { [weak self] tool in
+            guard let self else { return }
+            switch tool {
+            case .emoji: self.showPanel(.emoji)
+            case .clipboard: self.showPanel(.clipboard)
+            case .translate: self.showPanel(.translate)
+            case .calculator: self.showPanel(.calculator)
+            case .contacts: self.showPanel(.contacts)
+            case .settings: self.showPanel(.settings)
+            }
+        }
+        calculatorPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        calculatorPanel.onInsert = { [weak self] text in
+            self?.textDocumentProxy.insertText(text)
+            self?.showPanel(.keys)
+        }
+        settingsPanel.onClose = { [weak self] in
+            self?.showPanel(.keys)
+            self?.reload(force: true)
+        }
+        settingsPanel.onChange = { [weak self] in self?.reload(force: true) }
+        searchPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        searchPanel.onInsert = { [weak self] text in
+            guard let self else { return }
+            self.textDocumentProxy.insertText(text)
+            self.showPanel(.keys)
+        }
         suggestionBar.onSuggestion = { [weak self] value in self?.applySuggestion(value) }
 
         emojiPanel.onInsert = { [weak self] emoji in
@@ -156,9 +204,25 @@ final class KeyboardViewController: UIInputViewController {
     private func showPanel(_ newPanel: Panel) {
         panel = newPanel
         let theme = KeyboardTheme.make(dark: isDark)
+        let arabic = language == .arabic
+        translateWork?.cancel()
         switch newPanel {
         case .keys:
             break
+        case .tools:
+            toolsPanel.configure(theme: theme, arabic: arabic)
+        case .calculator:
+            calculatorPanel.configure(theme: theme, arabic: arabic)
+        case .settings:
+            settingsPanel.configure(theme: theme, arabic: arabic)
+        case .contacts:
+            query = ""
+            mode = .letters
+            searchPanel.configure(theme: theme, title: arabic ? "جهات الاتصال" : "Contacts", insertTitle: nil)
+        case .translate:
+            query = ""
+            mode = .letters
+            searchPanel.configure(theme: theme, title: arabic ? "ترجمة" : "Translate", insertTitle: arabic ? "إدراج" : "Insert")
         case .emoji:
             emojiPanel.configure(theme: theme, recents: recents, closeTitle: language == .arabic ? "أبج" : "ABC")
         case .clipboard:
@@ -167,9 +231,100 @@ final class KeyboardViewController: UIInputViewController {
         }
         emojiPanel.isHidden = newPanel != .emoji
         clipboardPanel.isHidden = newPanel != .clipboard
+        toolsPanel.isHidden = newPanel != .tools
+        calculatorPanel.isHidden = newPanel != .calculator
+        settingsPanel.isHidden = newPanel != .settings
+        searchPanel.isHidden = !isSearching
         suggestionBar.isHidden = newPanel != .keys
-        keyboardView.isHidden = newPanel != .keys
-        if newPanel == .keys { updateSuggestions() }
+        keyboardView.isHidden = !(newPanel == .keys || isSearching)
+        barHeightConstraint?.constant = isSearching ? searchHeight : barHeight
+        updateHeight()
+        if isSearching { reload(force: true); updateSearch() }
+        if newPanel == .keys { reload() }
+    }
+
+    // MARK: Contacts search / translation
+
+    private func updateSearch() {
+        let arabic = language == .arabic
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        switch panel {
+        case .contacts:
+            searchPanel.setQuery(query, placeholder: arabic ? "اكتب اسم…" : "Search contacts…")
+            guard ContactsSearcher.isAuthorized else {
+                searchPanel.show(message: arabic
+                    ? "افتح تطبيق ضاد ← الإعدادات ← اسمح بالوصول لجهات الاتصال. ولازم Allow Full Access يكون مفعّل."
+                    : "Open the Daad app → Settings → allow Contacts access. Allow Full Access must be on.")
+                return
+            }
+            guard !trimmed.isEmpty else {
+                searchPanel.show(message: arabic ? "اكتب اسم وهتظهر الأرقام والإيميلات" : "Type a name to see numbers and emails")
+                return
+            }
+            let q = trimmed
+            ContactsSearcher.search(q) { [weak self] rows in
+                guard let self, self.panel == .contacts,
+                      self.query.trimmingCharacters(in: .whitespaces) == q else { return }
+                if rows.isEmpty {
+                    self.searchPanel.show(message: arabic ? "مفيش نتايج" : "No results")
+                } else {
+                    self.searchPanel.show(rows: rows)
+                }
+            }
+        case .translate:
+            searchPanel.setQuery(query, placeholder: arabic ? "اكتب النص اللي عايز تترجمه…" : "Type text to translate…")
+            translateWork?.cancel()
+            guard !trimmed.isEmpty else {
+                searchPanel.show(message: arabic ? "عربي ← English  ·  English ← عربي" : "Arabic ↔ English")
+                return
+            }
+            let q = trimmed
+            let work = DispatchWorkItem { [weak self] in
+                Translator.translate(q) { text, failure in
+                    guard let self, self.panel == .translate,
+                          self.query.trimmingCharacters(in: .whitespaces) == q else { return }
+                    if let text {
+                        self.searchPanel.show(result: text)
+                        return
+                    }
+                    switch failure {
+                    case .unsupportedSystem:
+                        self.searchPanel.show(message: arabic ? "الترجمة محتاجة iOS 26 أو أحدث" : "Translation needs iOS 26 or later")
+                    case .notInstalled:
+                        self.searchPanel.show(message: arabic
+                            ? "نزّل لغات الترجمة من تطبيق ضاد ← الإعدادات ← تنزيل لغات الترجمة"
+                            : "Download the languages in the Daad app → Settings")
+                    case .failed(let reason):
+                        self.searchPanel.show(message: (arabic ? "الترجمة ماشتغلتش: " : "Translation failed: ") + reason)
+                    case nil:
+                        break
+                    }
+                }
+            }
+            translateWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        default:
+            break
+        }
+    }
+
+    /// Keys typed while searching go into the search text, not the app. Returns true if handled.
+    private func handleSearchKey(_ action: KeyAction) -> Bool {
+        switch action {
+        case .character(let text):
+            query += text
+        case .space:
+            query += " "
+        case .returnKey:
+            if panel == .translate { translateWork?.perform() }
+            return true
+        default:
+            return false
+        }
+        if shift == .on { shift = .off }
+        reload()
+        updateSearch()
+        return true
     }
 
     private func configureClipboardPanel() {
@@ -225,7 +380,7 @@ final class KeyboardViewController: UIInputViewController {
             suggestionBar.apply(theme: theme)
             updateHeight()
         }
-        keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping)
+        keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
         updateSuggestions()
     }
 
@@ -233,7 +388,8 @@ final class KeyboardViewController: UIInputViewController {
         let screen = UIScreen.main.bounds
         let landscape = screen.width > screen.height
         let rowHeight: CGFloat = landscape ? 40 : 52
-        let height = barHeight + CGFloat(rowCount) * rowHeight + 6
+        let top = isSearching ? searchHeight : barHeight
+        let height = top + CGFloat(rowCount) * rowHeight + 6
         if let c = heightConstraint {
             c.constant = height
         } else {
@@ -469,6 +625,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     var popupsEnabled: Bool { settings.bool(.keyPopups) }
 
     func keyboardView(_ view: KeyboardView, didTap action: KeyAction) {
+        if isSearching && handleSearchKey(action) { return }
         switch action {
         case .character(let text):
             insert(text)
@@ -501,10 +658,16 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {
+        if isSearching { _ = handleSearchKey(.character(text)); return }
         insert(text)
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
+        if isSearching {
+            if !query.isEmpty { query.removeLast() }
+            updateSearch()
+            return
+        }
         // Backspace right after an autocorrect brings back what was typed.
         if !word, let c = lastCorrection, (proxy.documentContextBeforeInput ?? "").hasSuffix(c.replacement + " ") {
             for _ in 0..<(c.replacement.count + 1) { proxy.deleteBackward() }
