@@ -177,6 +177,7 @@ enum Layouts {
 
     private static func bottomRow(_ c: LayoutContext, maxUnits: CGFloat, modeKey: Key, left: Key?, right: Key?) -> KeyRow {
         var keys: [Key] = [modeKey]
+        keys.append(Key(action: .emoji, label: "", symbol: "face.smiling", width: 1.2, style: .special))
         if c.needsGlobe {
             keys.append(Key(action: .nextKeyboard, label: "", symbol: "globe", width: 1.2, style: .special))
         }

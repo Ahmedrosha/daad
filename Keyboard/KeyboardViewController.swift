@@ -647,6 +647,8 @@ extension KeyboardViewController: KeyboardViewDelegate {
             advanceToNextInputMode()
         case .dismiss:
             dismissKeyboard()
+        case .emoji:
+            showPanel(.emoji)
         case .forwardDelete:
             guard let after = proxy.documentContextAfterInput, let next = after.first else { return }
             proxy.adjustTextPosition(byCharacterOffset: next.utf16.count)
