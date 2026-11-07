@@ -19,7 +19,7 @@ enum DaadSetting: String, CaseIterable {
 
     var defaultValue: Bool {
         switch self {
-        case .rtlMark, .autocorrect: return false
+        case .rtlMark, .autocorrect, .arrowRow: return false
         default: return true
         }
     }

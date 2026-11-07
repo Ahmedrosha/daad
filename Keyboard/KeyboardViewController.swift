@@ -186,6 +186,20 @@ final class KeyboardViewController: UIInputViewController {
         suggestionBar.onClipboard = { [weak self] in self?.showPanel(.clipboard) }
         suggestionBar.onTools = { [weak self] in self?.showPanel(.tools) }
         suggestionBar.onCalculator = { [weak self] in self?.showPanel(.calculator) }
+        suggestionBar.onPaste = { [weak self] in
+            guard let self else { return }
+            guard self.hasFullAccess else { return }   // iOS blocks the clipboard without Full Access
+            if let text = UIPasteboard.general.string, !text.isEmpty {
+                self.textDocumentProxy.insertText(text)
+                self.feedback(for: .character(text))
+                self.reload()
+            }
+        }
+        suggestionBar.onArrows = { [weak self] in
+            guard let self else { return }
+            self.settings.set(!self.settings.bool(.arrowRow), for: .arrowRow)
+            self.reload(force: true)
+        }
         suggestionBar.onLanguage = { [weak self] in
             guard let self else { return }
             self.keyboardViewSwitchLanguage(self.keyboardView)
@@ -510,6 +524,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
         lexicon.blockOffensive = settings.bool(.blockOffensive)
         suggestionBar.setLanguage(language)
+        suggestionBar.setArrowsOn(settings.bool(.arrowRow))
         updateSuggestions()
     }
 

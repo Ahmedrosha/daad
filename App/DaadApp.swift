@@ -133,7 +133,7 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.autoCapitalize.rawValue, store: SharedSettings.store) private var autoCapitalize = true
     // Layout
     @AppStorage(DaadSetting.numberRow.rawValue, store: SharedSettings.store) private var numberRow = true
-    @AppStorage(DaadSetting.arrowRow.rawValue, store: SharedSettings.store) private var arrowRow = true
+    @AppStorage(DaadSetting.arrowRow.rawValue, store: SharedSettings.store) private var arrowRow = false
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
     @AppStorage(DaadSetting.rtlMark.rawValue, store: SharedSettings.store) private var rtlMark = false

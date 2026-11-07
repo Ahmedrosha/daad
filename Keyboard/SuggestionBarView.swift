@@ -15,6 +15,8 @@ final class SuggestionBarView: UIView {
     var onTools: (() -> Void)?
     var onCalculator: (() -> Void)?
     var onLanguage: (() -> Void)?
+    var onPaste: (() -> Void)?
+    var onArrows: (() -> Void)?
 
     private let dismissButton = UIButton(type: .system)
     private let emojiButton = UIButton(type: .system)
@@ -22,6 +24,9 @@ final class SuggestionBarView: UIView {
     private let toolsButton = UIButton(type: .system)
     private let calculatorButton = UIButton(type: .system)
     private let languageButton = UIButton(type: .system)
+    private let pasteButton = UIButton(type: .system)
+    private let arrowsButton = UIButton(type: .system)
+    private var arrowsOn = false
     private var suggestionButtons: [UIButton] = []
     private var dividers: [UIView] = []
     private var values: [String] = []
@@ -32,7 +37,9 @@ final class SuggestionBarView: UIView {
         super.init(frame: frame)
         configure(dismissButton, symbol: "keyboard.chevron.compact.down", action: #selector(dismissTapped))
         configure(emojiButton, symbol: "face.smiling", action: #selector(emojiTapped))
-        configure(clipboardButton, symbol: "doc.on.clipboard", action: #selector(clipboardTapped))
+        configure(clipboardButton, symbol: "list.bullet.clipboard", action: #selector(clipboardTapped))
+        configure(pasteButton, symbol: "doc.on.clipboard", action: #selector(pasteTapped))
+        configure(arrowsButton, symbol: "arrow.up.and.down.and.arrow.left.and.right", action: #selector(arrowsTapped))
         configure(toolsButton, symbol: "square.grid.2x2", action: #selector(toolsTapped))
         configure(calculatorButton, symbol: "plusminus.circle", action: #selector(calculatorTapped))
         languageButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .medium)
@@ -66,10 +73,17 @@ final class SuggestionBarView: UIView {
     func apply(theme: KeyboardTheme) {
         self.theme = theme
         backgroundColor = theme.background
-        for b in [dismissButton, emojiButton, clipboardButton, toolsButton, calculatorButton] { b.tintColor = theme.text }
+        for b in [dismissButton, emojiButton, clipboardButton, toolsButton, calculatorButton, pasteButton] { b.tintColor = theme.text }
+        arrowsButton.tintColor = arrowsOn ? theme.accent : theme.text
         languageButton.setTitleColor(theme.text, for: .normal)
         for b in suggestionButtons { b.setTitleColor(theme.text, for: .normal) }
         for d in dividers { d.backgroundColor = theme.secondaryText.withAlphaComponent(0.35) }
+    }
+
+    /// Arrow-row button is highlighted while the arrows are shown.
+    func setArrowsOn(_ on: Bool) {
+        arrowsOn = on
+        arrowsButton.tintColor = on ? theme.accent : theme.text
     }
 
     /// Shows the language the button switches to.
@@ -84,6 +98,8 @@ final class SuggestionBarView: UIView {
         clipboardButton.isHidden = false
         toolsButton.isHidden = false
         calculatorButton.isHidden = false
+        pasteButton.isHidden = false
+        arrowsButton.isHidden = false
         suggestionButtons.forEach { $0.isHidden = true }
         dividers.forEach { $0.isHidden = true }
     }
@@ -96,6 +112,8 @@ final class SuggestionBarView: UIView {
         clipboardButton.isHidden = true
         toolsButton.isHidden = true
         calculatorButton.isHidden = true
+        pasteButton.isHidden = true
+        arrowsButton.isHidden = true
         values = suggestions.map { $0.value }
         for (i, b) in suggestionButtons.enumerated() {
             if i < suggestions.count {
@@ -117,10 +135,11 @@ final class SuggestionBarView: UIView {
         dismissButton.frame = CGRect(x: 4, y: 0, width: 44, height: h)
         languageButton.frame = CGRect(x: 50, y: 0, width: 44, height: h)
         let right = bounds.width - 4
-        toolsButton.frame = CGRect(x: right - 44, y: 0, width: 44, height: h)
-        clipboardButton.frame = CGRect(x: right - 92, y: 0, width: 44, height: h)
-        calculatorButton.frame = CGRect(x: right - 140, y: 0, width: 44, height: h)
-        emojiButton.frame = CGRect(x: right - 188, y: 0, width: 44, height: h)
+        // Right side, from the edge inward.
+        let w: CGFloat = 40
+        for (i, b) in [toolsButton, arrowsButton, pasteButton, clipboardButton, calculatorButton, emojiButton].enumerated() {
+            b.frame = CGRect(x: right - w * CGFloat(i + 1), y: 0, width: w, height: h)
+        }
 
         let start: CGFloat = 98
         let width = (bounds.width - start - 4) / 3
@@ -138,6 +157,8 @@ final class SuggestionBarView: UIView {
     @objc private func toolsTapped() { onTools?() }
     @objc private func calculatorTapped() { onCalculator?() }
     @objc private func languageTapped() { onLanguage?() }
+    @objc private func pasteTapped() { onPaste?() }
+    @objc private func arrowsTapped() { onArrows?() }
 
     @objc private func suggestionTapped(_ sender: UIButton) {
         guard values.indices.contains(sender.tag) else { return }
