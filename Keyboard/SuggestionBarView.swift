@@ -13,11 +13,13 @@ final class SuggestionBarView: UIView {
     var onEmoji: (() -> Void)?
     var onClipboard: (() -> Void)?
     var onTools: (() -> Void)?
+    var onCalculator: (() -> Void)?
 
     private let dismissButton = UIButton(type: .system)
     private let emojiButton = UIButton(type: .system)
     private let clipboardButton = UIButton(type: .system)
     private let toolsButton = UIButton(type: .system)
+    private let calculatorButton = UIButton(type: .system)
     private var suggestionButtons: [UIButton] = []
     private var dividers: [UIView] = []
     private var values: [String] = []
@@ -30,6 +32,7 @@ final class SuggestionBarView: UIView {
         configure(emojiButton, symbol: "face.smiling", action: #selector(emojiTapped))
         configure(clipboardButton, symbol: "doc.on.clipboard", action: #selector(clipboardTapped))
         configure(toolsButton, symbol: "square.grid.2x2", action: #selector(toolsTapped))
+        configure(calculatorButton, symbol: "plusminus.circle", action: #selector(calculatorTapped))
         for i in 0..<3 {
             let b = UIButton(type: .system)
             b.tag = i
@@ -58,7 +61,7 @@ final class SuggestionBarView: UIView {
     func apply(theme: KeyboardTheme) {
         self.theme = theme
         backgroundColor = theme.background
-        for b in [dismissButton, emojiButton, clipboardButton, toolsButton] { b.tintColor = theme.text }
+        for b in [dismissButton, emojiButton, clipboardButton, toolsButton, calculatorButton] { b.tintColor = theme.text }
         for b in suggestionButtons { b.setTitleColor(theme.text, for: .normal) }
         for d in dividers { d.backgroundColor = theme.secondaryText.withAlphaComponent(0.35) }
     }
@@ -69,6 +72,7 @@ final class SuggestionBarView: UIView {
         emojiButton.isHidden = false
         clipboardButton.isHidden = false
         toolsButton.isHidden = false
+        calculatorButton.isHidden = false
         suggestionButtons.forEach { $0.isHidden = true }
         dividers.forEach { $0.isHidden = true }
     }
@@ -80,6 +84,7 @@ final class SuggestionBarView: UIView {
         emojiButton.isHidden = true
         clipboardButton.isHidden = true
         toolsButton.isHidden = true
+        calculatorButton.isHidden = true
         values = suggestions.map { $0.value }
         for (i, b) in suggestionButtons.enumerated() {
             if i < suggestions.count {
@@ -102,7 +107,8 @@ final class SuggestionBarView: UIView {
         let right = bounds.width - 4
         toolsButton.frame = CGRect(x: right - 44, y: 0, width: 44, height: h)
         clipboardButton.frame = CGRect(x: right - 92, y: 0, width: 44, height: h)
-        emojiButton.frame = CGRect(x: right - 140, y: 0, width: 44, height: h)
+        calculatorButton.frame = CGRect(x: right - 140, y: 0, width: 44, height: h)
+        emojiButton.frame = CGRect(x: right - 188, y: 0, width: 44, height: h)
 
         let start: CGFloat = 52
         let width = (bounds.width - start - 4) / 3
@@ -118,6 +124,7 @@ final class SuggestionBarView: UIView {
     @objc private func emojiTapped() { onEmoji?() }
     @objc private func clipboardTapped() { onClipboard?() }
     @objc private func toolsTapped() { onTools?() }
+    @objc private func calculatorTapped() { onCalculator?() }
 
     @objc private func suggestionTapped(_ sender: UIButton) {
         guard values.indices.contains(sender.tag) else { return }

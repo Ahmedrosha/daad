@@ -130,14 +130,14 @@ enum Layouts {
             let r2 = arabic
                 ? ["-", "/", ":", "؛", "(", ")", "$", "&", "@", "\""]
                 : ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""]
-            rows.append(KeyRow(keys: chars(r2), rightToLeft: false))
+            rows.append(KeyRow(keys: arabic ? arabicSymbols(r2) : chars(r2), rightToLeft: false))
             let more = Key(action: .modeChange(.symbols2), label: "#+=", width: 1.5, style: .special, smallLabel: true)
             rows.append(KeyRow(keys: [more] + r3Keys + [backspace(width: 1.5, arabic: arabic)], rightToLeft: false))
         } else {
             let r1 = arabic
                 ? ["[", "]", "{", "}", "#", "%", "«", "»", "+", "="]
                 : ["[", "]", "{", "}", "#", "%", "^", "*", "+", "="]
-            rows.append(KeyRow(keys: chars(r1), rightToLeft: false))
+            rows.append(KeyRow(keys: arabic ? arabicSymbols(r1) : chars(r1), rightToLeft: false))
             if arabic {
                 let marks = harakat + ["ـ", "~"]
                 rows.append(KeyRow(keys: marks.map {
@@ -157,6 +157,15 @@ enum Layouts {
     }
 
     // MARK: Building blocks
+
+    /// In right-to-left text iOS draws brackets mirrored, so Arabic keys show the shape that will appear.
+    private static let mirrored: [String: String] = [
+        "(": ")", ")": "(", "[": "]", "]": "[", "{": "}", "}": "{", "<": ">", ">": "<", "«": "»", "»": "«",
+    ]
+
+    private static func arabicSymbols(_ list: [String]) -> [Key] {
+        list.map { Key(action: .character($0), label: mirrored[$0] ?? $0) }
+    }
 
     private static func chars(_ list: [String], alternates: [String: [String]] = [:], upper: Bool = false) -> [Key] {
         list.map { base in

@@ -143,6 +143,7 @@ final class KeyboardViewController: UIInputViewController {
         suggestionBar.onEmoji = { [weak self] in self?.showPanel(.emoji) }
         suggestionBar.onClipboard = { [weak self] in self?.showPanel(.clipboard) }
         suggestionBar.onTools = { [weak self] in self?.showPanel(.tools) }
+        suggestionBar.onCalculator = { [weak self] in self?.showPanel(.calculator) }
 
         toolsPanel.onClose = { [weak self] in self?.showPanel(.keys) }
         toolsPanel.onSelect = { [weak self] tool in
