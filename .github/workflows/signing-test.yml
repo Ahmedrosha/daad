@@ -1,0 +1,128 @@
+name: Signing test (no upload)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          echo "Using $XCODE"
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Download word lists
+        run: |
+          mkdir -p Keyboard/Resources "$RUNNER_TEMP/words"
+          BASE=https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018
+          curl -fsSL "$BASE/ar/ar_50k.txt" -o "$RUNNER_TEMP/words/ar.txt"
+          curl -fsSL "$BASE/en/en_50k.txt" -o "$RUNNER_TEMP/words/en.txt"
+          perl -CSD -ne 's/\r//; if (/^[\x{0621}-\x{064A}]+ \d+$/) { print; exit if ++$n >= 30000 }' "$RUNNER_TEMP/words/ar.txt" > Keyboard/Resources/words_ar.txt
+          perl -ne "s/\r//; if (/^[a-z']+ \d+\$/) { print; exit if ++\$n >= 30000 }" "$RUNNER_TEMP/words/en.txt" > Keyboard/Resources/words_en.txt
+          wc -l Keyboard/Resources/*.txt
+          head -n 3 Keyboard/Resources/words_ar.txt Keyboard/Resources/words_en.txt
+
+      - name: Generate Xcode project
+        env:
+          DEVELOPMENT_TEAM: ${{ secrets.APPLE_TEAM_ID }}
+        run: xcodegen generate
+
+      - name: Write App Store Connect API key
+        env:
+          ASC_PRIVATE_KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+        run: |
+          mkdir -p "$HOME/private_keys"
+          printf '%s' "$ASC_PRIVATE_KEY" > "$HOME/private_keys/AuthKey.p8"
+
+      - name: Verify App Store Connect API key
+        env:
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          KEY="$HOME/private_keys/AuthKey.p8"
+          echo "Key ID length: ${#KID} (should be 10)"
+          echo "Issuer ID length: ${#ISS} (should be 36)"
+          echo "Key file lines: $(wc -l < "$KEY" | tr -d ' ')"
+          grep -q "BEGIN PRIVATE KEY" "$KEY" && echo "BEGIN line: found" || echo "BEGIN line: MISSING"
+          grep -q "END PRIVATE KEY" "$KEY" && echo "END line: found" || echo "END line: MISSING"
+          ruby -ropenssl -rbase64 -rjson -rnet/http -e '
+            b64 = ->(s) { Base64.urlsafe_encode64(s, padding: false) }
+            begin
+              key = OpenSSL::PKey::EC.new(File.read(File.join(Dir.home, "private_keys/AuthKey.p8")))
+            rescue => e
+              puts "❌ The .p8 text in ASC_PRIVATE_KEY is not a valid private key: #{e.message}"
+              exit 1
+            end
+            now = Time.now.to_i
+            head = b64.(JSON.generate(alg: "ES256", kid: ENV["KID"].strip, typ: "JWT"))
+            body = b64.(JSON.generate(iss: ENV["ISS"].strip, iat: now, exp: now + 600, aud: "appstoreconnect-v1"))
+            input = "#{head}.#{body}"
+            der = OpenSSL::ASN1.decode(key.sign(OpenSSL::Digest::SHA256.new, input))
+            sig = der.value.map { |v| v.value.to_s(2).rjust(32, "\0") }.join
+            uri = URI("https://api.appstoreconnect.apple.com/v1/apps?limit=1")
+            req = Net::HTTP::Get.new(uri)
+            req["Authorization"] = "Bearer #{input}.#{b64.(sig)}"
+            res = Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |h| h.request(req) }
+            if res.code == "200"
+              puts "✅ API key works with Apple"
+            else
+              puts "❌ Apple rejected the key (HTTP #{res.code}): #{res.body}"
+              puts "Key ID, Issuer ID and the .p8 file must all belong to the SAME key."
+              exit 1
+            end
+          '
+
+      - name: Archive
+        run: |
+          xcodebuild archive \
+            -project Daad.xcodeproj \
+            -scheme Daad \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -archivePath "$RUNNER_TEMP/Daad.xcarchive" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Manual \
+            CODE_SIGN_IDENTITY=- \
+            PROVISIONING_PROFILE_SPECIFIER= \
+            CURRENT_PROJECT_VERSION="${{ github.run_number }}"
+
+      - name: Export & upload to App Store Connect
+        run: |
+          cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
+            <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
+            <key>signingStyle</key><string>automatic</string>
+            <key>uploadSymbols</key><true/>
+          </dict>
+          </plist>
+          PLIST
+          xcodebuild -exportArchive \
+            -archivePath "$RUNNER_TEMP/Daad.xcarchive" \
+            -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" \
+            -exportPath "$RUNNER_TEMP/export" \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath "$HOME/private_keys/AuthKey.p8" \
+            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
+            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Show what got signed
+        run: |
+          IPA=$(ls "$RUNNER_TEMP"/export/*.ipa)
+          mkdir -p "$RUNNER_TEMP/ipa" && cd "$RUNNER_TEMP/ipa" && unzip -q "$IPA"
+          APP=$(ls -d Payload/*.app)
+          codesign -dvv "$APP" 2>&1 | grep -E "Authority|TeamIdentifier" | head -3
+          codesign -d --entitlements :- "$APP/PlugIns/DaadKeyboard.appex" 2>/dev/null | grep -A2 application-groups
