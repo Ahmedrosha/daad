@@ -81,6 +81,35 @@ jobs:
             end
           '
 
+      - name: Create temporary signing certificate and profiles
+        env:
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+          WORK: ${{ runner.temp }}/signing
+        run: |
+          export KEY_PATH="$HOME/private_keys/AuthKey.p8"
+          ruby scripts/asc_signing.rb setup
+          P=$(openssl rand -hex 16)
+          cd "$WORK"
+          /usr/bin/openssl pkcs12 -export -inkey dist.key -in dist.pem -out dist.p12 -passout pass:$P
+          KC="$RUNNER_TEMP/ci.keychain-db"
+          security create-keychain -p "$P" "$KC"
+          security set-keychain-settings -lut 21600 "$KC"
+          security unlock-keychain -p "$P" "$KC"
+          curl -fsSL https://www.apple.com/certificateauthority/AppleWWDRCAG3.cer -o wwdr.cer
+          security import wwdr.cer -k "$KC" -A || true
+          security import dist.p12 -P "$P" -A -t cert -f pkcs12 -k "$KC"
+          security set-key-partition-list -S apple-tool:,apple: -k "$P" "$KC" > /dev/null
+          security list-keychains -d user -s "$KC" $(security list-keychains -d user | tr -d '"')
+          rm -f dist.key dist.p12
+          security find-identity -v -p codesigning "$KC"
+
+      - name: Use the temporary profiles
+        run: |
+          printf 'CODE_SIGN_STYLE = Manual\nCODE_SIGN_IDENTITY = Apple Distribution\nPROVISIONING_PROFILE_SPECIFIER = %s\n' "$APP_PROFILE" > Config/App.xcconfig
+          printf 'CODE_SIGN_STYLE = Manual\nCODE_SIGN_IDENTITY = Apple Distribution\nPROVISIONING_PROFILE_SPECIFIER = %s\n' "$EXT_PROFILE" > Config/Ext.xcconfig
+          DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" xcodegen generate
+
       - name: Archive
         run: |
           xcodebuild archive \
@@ -89,10 +118,6 @@ jobs:
             -configuration Release \
             -destination 'generic/platform=iOS' \
             -archivePath "$RUNNER_TEMP/Daad.xcarchive" \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath "$HOME/private_keys/AuthKey.p8" \
-            -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
-            -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             CURRENT_PROJECT_VERSION="${{ github.run_number }}"
 
@@ -106,7 +131,13 @@ jobs:
             <key>method</key><string>app-store-connect</string>
             <key>destination</key><string>upload</string>
             <key>teamID</key><string>${{ secrets.APPLE_TEAM_ID }}</string>
-            <key>signingStyle</key><string>automatic</string>
+            <key>signingStyle</key><string>manual</string>
+            <key>signingCertificate</key><string>Apple Distribution</string>
+            <key>provisioningProfiles</key>
+            <dict>
+              <key>com.daad.keyboard</key><string>$APP_PROFILE</string>
+              <key>com.daad.keyboard.ext</key><string>$EXT_PROFILE</string>
+            </dict>
             <key>uploadSymbols</key><true/>
           </dict>
           </plist>
@@ -119,3 +150,14 @@ jobs:
             -authenticationKeyPath "$HOME/private_keys/AuthKey.p8" \
             -authenticationKeyID "${{ secrets.ASC_KEY_ID }}" \
             -authenticationKeyIssuerID "${{ secrets.ASC_ISSUER_ID }}"
+
+      - name: Delete temporary certificate and profiles
+        if: always()
+        env:
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+          WORK: ${{ runner.temp }}/signing
+        run: |
+          export KEY_PATH="$HOME/private_keys/AuthKey.p8"
+          ruby scripts/asc_signing.rb cleanup
+          security delete-keychain "$RUNNER_TEMP/ci.keychain-db" || true

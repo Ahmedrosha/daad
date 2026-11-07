@@ -22,6 +22,8 @@ targets:
       - App
       - Shared
     scheme: {}
+    configFiles:
+      Release: Config/App.xcconfig
     info:
       path: App/Info.plist
       properties:
@@ -52,6 +54,8 @@ targets:
     sources:
       - Keyboard
       - Shared
+    configFiles:
+      Release: Config/Ext.xcconfig
     info:
       path: Keyboard/Info.plist
       properties:
