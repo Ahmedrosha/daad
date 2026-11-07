@@ -19,6 +19,7 @@ enum KeyAction: Equatable {
     case space
     case returnKey
     case nextKeyboard
+    case dismiss
     case modeChange(KeyboardMode)
 
     var isCharacter: Bool {

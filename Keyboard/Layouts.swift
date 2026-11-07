@@ -176,6 +176,7 @@ enum Layouts {
         if c.needsGlobe {
             keys.append(Key(action: .nextKeyboard, label: "", symbol: "globe", width: 1.2, style: .special))
         }
+        keys.append(Key(action: .dismiss, label: "", symbol: "keyboard.chevron.compact.down", width: 1.2, style: .special))
         if let left { keys.append(left) }
         let spaceIndex = keys.count
         keys.append(Key(action: .space, label: c.language.displayName, smallLabel: true))

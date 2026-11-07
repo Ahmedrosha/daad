@@ -216,6 +216,8 @@ extension KeyboardViewController: KeyboardViewDelegate {
             reload()
         case .nextKeyboard:
             advanceToNextInputMode()
+        case .dismiss:
+            dismissKeyboard()
         case .backspace:
             break
         }
