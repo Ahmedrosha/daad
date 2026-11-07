@@ -61,10 +61,10 @@ enum Layouts {
         let r1 = ["ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"]
         let r2 = ["ش", "س", "ي", "ب", "ل", "ا", "ت", "ن", "م", "ك", "ط"]
         let r3 = ["ذ", "ء", "ؤ", "ر", "ى", "ة", "و", "ز", "ظ", "د"]
-        rows.append(KeyRow(keys: chars(r1, alternates: arabicAlternates), rightToLeft: true))
-        rows.append(KeyRow(keys: chars(r2, alternates: arabicAlternates), rightToLeft: true))
-        // In a right-to-left row the last key sits on the far left, like the Arabic iOS keyboard.
-        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1)], rightToLeft: true))
+        rows.append(KeyRow(keys: chars(r1, alternates: arabicAlternates), rightToLeft: false))
+        rows.append(KeyRow(keys: chars(r2, alternates: arabicAlternates), rightToLeft: false))
+        // Standard Arabic layout: ض on the far left (where Q is), delete on the far right.
+        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1)], rightToLeft: false))
         let comma = Key(action: .character("،"), label: "،", alternates: harakat + ["؛"])
         let period = Key(action: .character("."), label: ".", alternates: ["؟", "!", "،", ":", "\"", "-", "'"])
         rows.append(bottomRow(c, maxUnits: max,
@@ -139,7 +139,7 @@ enum Layouts {
                 let marks = harakat + ["ـ", "~"]
                 rows.append(KeyRow(keys: marks.map {
                     Key(action: .character($0), label: TextHelpers.display($0))
-                }, rightToLeft: true))
+                }, rightToLeft: false))
             } else {
                 rows.append(KeyRow(keys: chars(["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"]), rightToLeft: false))
             }
