@@ -12,6 +12,10 @@ enum ShiftState: Equatable {
     case locked
 }
 
+enum ArrowDirection: Equatable {
+    case left, right, up, down
+}
+
 enum KeyAction: Equatable {
     case character(String)
     case backspace
@@ -22,6 +26,7 @@ enum KeyAction: Equatable {
     case nextKeyboard
     case dismiss
     case emoji
+    case arrow(ArrowDirection)
     case modeChange(KeyboardMode)
 
     var isCharacter: Bool {

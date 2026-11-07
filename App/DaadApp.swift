@@ -133,6 +133,7 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.autoCapitalize.rawValue, store: SharedSettings.store) private var autoCapitalize = true
     // Layout
     @AppStorage(DaadSetting.numberRow.rawValue, store: SharedSettings.store) private var numberRow = true
+    @AppStorage(DaadSetting.arrowRow.rawValue, store: SharedSettings.store) private var arrowRow = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
     @AppStorage(DaadSetting.rtlMark.rawValue, store: SharedSettings.store) private var rtlMark = false
@@ -181,6 +182,7 @@ struct SettingsView: View {
                         Text(t("زي Gboard", "Like Gboard")).tag("gboard")
                     }
                     Toggle(t("صف الأرقام", "Number row"), isOn: $numberRow)
+                    Toggle(t("صف أسهم تحريك المؤشر", "Cursor arrow row"), isOn: $arrowRow)
                     Toggle(t("أرقام عربية ١٢٣ في الكيبورد العربي", "Arabic digits ١٢٣ on the Arabic keyboard"), isOn: $arabicDigits)
                     Picker(t("وضع اليد الواحدة", "One-handed mode"), selection: $oneHandedMode) {
                         Text(t("مقفول", "Off")).tag("off")

@@ -15,6 +15,7 @@ enum DaadSetting: String, CaseIterable {
     case glideTyping     // الكتابة بالسحب
     case blockOffensive  // منع الكلمات البذيئة من الاقتراحات
     case emojiSuggestions // اقتراح إيموجي
+    case arrowRow        // صف أسهم تحريك المؤشر
 
     var defaultValue: Bool {
         switch self {

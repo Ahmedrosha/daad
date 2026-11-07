@@ -329,6 +329,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
         ]),
         ("شكل الكيبورد", "Layout", [
             (.numberRow, "صف الأرقام", "Number row"),
+            (.arrowRow, "صف أسهم تحريك المؤشر", "Cursor arrow row"),
             (.arabicDigits, "أرقام عربية ١٢٣", "Arabic digits ١٢٣"),
         ]),
         ("الإحساس", "Feel", [

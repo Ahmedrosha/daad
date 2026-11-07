@@ -493,7 +493,8 @@ final class KeyboardViewController: UIInputViewController {
             returnLabel: returnLabel,
             dark: isDark,
             look: KeyLook.current,
-            arabicLayout: settings.arabicLayout)
+            arabicLayout: settings.arabicLayout,
+            arrowRow: settings.bool(.arrowRow) && !isSearching)
         if force || context != currentContext {
             currentContext = context
             let layout = Layouts.build(context)
@@ -861,6 +862,15 @@ extension KeyboardViewController: KeyboardViewDelegate {
             dismissKeyboard()
         case .emoji:
             showPanel(.emoji)
+        case .arrow(let direction):
+            switch direction {
+            case .left: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? 1 : -1)
+            case .right: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? -1 : 1)
+            case .up: keyboardView(view, moveCursorLines: -1)
+            case .down: keyboardView(view, moveCursorLines: 1)
+            }
+            lastCorrection = nil
+            updateSuggestions()
         case .forwardDelete:
             guard let after = proxy.documentContextAfterInput, let next = after.first else { return }
             proxy.adjustTextPosition(byCharacterOffset: next.utf16.count)
@@ -905,8 +915,28 @@ extension KeyboardViewController: KeyboardViewDelegate {
         reload()
     }
 
+    /// Fixed while a space-bar swipe is in progress, so passing over an English word inside Arabic
+    /// text (or the opposite) doesn't flip the direction mid-swipe.
+    private var lockedCursorDirection: Bool?
+
+    func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
+        lockedCursorDirection = began ? paragraphIsRightToLeft : nil
+        if !began { updateSuggestions() }
+    }
+
+    /// Direction of the current line, from its first real letter (how iOS lays the line out).
+    private var paragraphIsRightToLeft: Bool {
+        let before = proxy.documentContextBeforeInput ?? ""
+        let line = before.split(separator: "\n", omittingEmptySubsequences: false).last.map(String.init) ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        let rest = after.split(separator: "\n", omittingEmptySubsequences: false).first.map(String.init) ?? ""
+        if let ch = (line + rest).first(where: { $0.isLetter }) { return TextHelpers.isArabic(ch) }
+        return language == .arabic
+    }
+
     /// Direction of the text around the cursor, from the nearest real letter (spaces and digits don't count).
     private var textIsRightToLeft: Bool {
+        if let locked = lockedCursorDirection { return locked }
         let before = proxy.documentContextBeforeInput ?? ""
         let after = proxy.documentContextAfterInput ?? ""
         if let ch = before.reversed().first(where: { $0.isLetter }) ?? after.first(where: { $0.isLetter }) {

@@ -8,6 +8,7 @@ protocol KeyboardViewDelegate: AnyObject {
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
     func keyboardView(_ view: KeyboardView, moveCursorLines lines: Int)
     func keyboardView(_ view: KeyboardView, moveCursorToLineEdge right: Bool)
+    func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool)
     func keyboardView(_ view: KeyboardView, feedbackFor action: KeyAction)
     func keyboardViewTickFeedback(_ view: KeyboardView)
     func keyboardView(_ view: KeyboardView, didGlide path: [CGPoint], keyCenters: [Character: CGPoint], keyWidth: CGFloat)
@@ -37,7 +38,7 @@ final class KeyboardView: UIView {
     private let cursorStartDistance: CGFloat = 6
     private let cursorStepWidth: CGFloat = 5
     private let flingSpeed: CGFloat = 1800
-    private let cursorLineHeight: CGFloat = 34
+    private let cursorLineHeight: CGFloat = 30
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -140,9 +141,15 @@ final class KeyboardView: UIView {
             let p = touch.location(in: self)
             switch tracker.keyView.key.action {
             case .space:
-                if !tracker.cursorMode && hypot(p.x - tracker.start.x, p.y - tracker.start.y) > cursorStartDistance {
+                // After the hold that switches language, a clear move is needed, so a small wobble
+                // doesn't cancel the switch.
+                let needed = tracker.holdFired ? 22 : cursorStartDistance
+                if !tracker.cursorMode && hypot(p.x - tracker.start.x, p.y - tracker.start.y) > needed {
                     tracker.invalidate()
                     tracker.cursorMode = true
+                    tracker.holdFired = false
+                    tracker.verticalAnchorX = p.x
+                    delegate?.keyboardViewCursorGesture(self, began: true)
                     tracker.cursorAnchorX = p.x
                     tracker.cursorAnchorY = p.y
                     tracker.lastPoint = p
@@ -180,7 +187,11 @@ final class KeyboardView: UIView {
                         delegate?.keyboardView(self, moveCursorBy: steps)
                         delegate?.keyboardViewTickFeedback(self)
                         tracker.cursorAnchorX += CGFloat(steps) * cursorStepWidth
-                        tracker.cursorAnchorY = p.y      // sideways moves don't count as up/down
+                    }
+                    // Up/down only when the finger moves mostly vertically.
+                    if abs(p.x - tracker.verticalAnchorX) > 24 {
+                        tracker.verticalAnchorX = p.x
+                        tracker.cursorAnchorY = p.y
                     }
                     let lines = Int((p.y - tracker.cursorAnchorY) / cursorLineHeight)
                     if lines != 0 {
@@ -274,6 +285,16 @@ final class KeyboardView: UIView {
                 }
             }
 
+        case .arrow:
+            delegate?.keyboardView(self, didTap: kv.key.action)
+            tracker.timer = schedule(0.4, repeats: false) { [weak self, weak tracker] _ in
+                guard let self, let tracker else { return }
+                tracker.timer = self.schedule(0.07, repeats: true) { [weak self, weak tracker] _ in
+                    guard let self, let tracker else { return }
+                    self.delegate?.keyboardView(self, didTap: tracker.keyView.key.action)
+                }
+            }
+
         case .space:
             tracker.timer = schedule(holdDelay, repeats: false) { [weak self, weak tracker] _ in
                 guard let self, let tracker, !tracker.cursorMode else { return }
@@ -330,13 +351,14 @@ final class KeyboardView: UIView {
         case .space:
             if tracker.cursorMode {
                 setCursorModeVisual(false)
+                delegate?.keyboardViewCursorGesture(self, began: false)
             } else if tracker.holdFired {
                 kv.resetLabel()
                 if !cancelled { delegate?.keyboardViewSwitchLanguage(self) }
             } else if !cancelled {
                 delegate?.keyboardView(self, didTap: .space)
             }
-        case .backspace:
+        case .backspace, .arrow:
             break
         default:
             if !cancelled { delegate?.keyboardView(self, didTap: kv.key.action) }
@@ -392,6 +414,7 @@ private final class TouchTracker {
     var lastPoint: CGPoint = .zero
     var lastTime: TimeInterval = 0
     var edgeReached = 0     // last flick direction: 1 right, -1 left
+    var verticalAnchorX: CGFloat = 0
     var alternates: AlternatesView?
     var gliding = false
     var path: [CGPoint] = []

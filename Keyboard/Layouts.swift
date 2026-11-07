@@ -11,6 +11,7 @@ struct LayoutContext: Equatable {
     var dark: Bool
     var look: KeyLook = KeyLook()
     var arabicLayout: String = "iphone"
+    var arrowRow: Bool = false
 }
 
 enum Layouts {
@@ -46,12 +47,23 @@ enum Layouts {
     ]
 
     static func build(_ c: LayoutContext) -> (rows: [KeyRow], maxUnits: CGFloat) {
+        var result: ([KeyRow], CGFloat)
         switch c.mode {
         case .letters:
-            return c.language == .arabic ? arabicLetters(c) : englishLetters(c)
+            result = c.language == .arabic ? arabicLetters(c) : englishLetters(c)
         case .symbols1, .symbols2:
-            return (symbols(c), 10)
+            result = (symbols(c), 10)
         }
+        if c.arrowRow { result.0.append(arrowRow(maxUnits: result.1)) }
+        return (result.0, result.1)
+    }
+
+    /// ← ↑ ↓ → for moving the cursor (hold to repeat).
+    private static func arrowRow(maxUnits: CGFloat) -> KeyRow {
+        let w = maxUnits / 4
+        let keys: [(ArrowDirection, String)] = [(.left, "arrow.left"), (.up, "arrow.up"), (.down, "arrow.down"), (.right, "arrow.right")]
+        return KeyRow(keys: keys.map { Key(action: .arrow($0.0), label: "", symbol: $0.1, width: w, style: .special) },
+                      rightToLeft: false)
     }
 
     // MARK: Letters
