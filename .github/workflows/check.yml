@@ -1,0 +1,41 @@
+name: Compile check (no upload)
+
+# Compiles the app without signing or uploading anything.
+on:
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$XCODE"
+          xcodebuild -version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Download word lists
+        run: |
+          mkdir -p Keyboard/Resources "$RUNNER_TEMP/words"
+          BASE=https://raw.githubusercontent.com/hermitdave/FrequencyWords/master/content/2018
+          curl -fsSL "$BASE/ar/ar_50k.txt" -o "$RUNNER_TEMP/words/ar.txt"
+          curl -fsSL "$BASE/en/en_50k.txt" -o "$RUNNER_TEMP/words/en.txt"
+          perl -CSD -ne 's/\r//; if (/^[\x{0621}-\x{064A}]+ \d+$/) { print; exit if ++$n >= 30000 }' "$RUNNER_TEMP/words/ar.txt" > Keyboard/Resources/words_ar.txt
+          perl -ne "s/\r//; if (/^[a-z']+ \d+\$/) { print; exit if ++\$n >= 30000 }" "$RUNNER_TEMP/words/en.txt" > Keyboard/Resources/words_en.txt
+          wc -l Keyboard/Resources/*.txt
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Compile
+        run: |
+          set -o pipefail
+          xcodebuild build -project Daad.xcodeproj -scheme Daad -configuration Debug \
+            -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
+          grep -q "BUILD SUCCEEDED" build.log
