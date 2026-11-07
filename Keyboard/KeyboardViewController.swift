@@ -56,6 +56,8 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         language = settings.language
+        // Tells the app which language is being typed, so it lays the text out the right way.
+        primaryLanguage = language == .arabic ? "ar" : "en-US"
         lexicon.configure(store: store)
         clipboard.configure(store: store)
 
@@ -621,6 +623,14 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    /// Deletes one visible character, together with any invisible direction marks around it.
+    private func deleteOneCharacter() {
+        let mark: Character = "\u{200E}"
+        while proxy.documentContextBeforeInput?.last == mark { proxy.deleteBackward() }
+        proxy.deleteBackward()
+        while proxy.documentContextBeforeInput?.last == mark { proxy.deleteBackward() }
+    }
+
     private func deleteWord() {
         guard let before = proxy.documentContextBeforeInput, !before.isEmpty else {
             proxy.deleteBackward()
@@ -648,7 +658,12 @@ final class KeyboardViewController: UIInputViewController {
             lastCorrection = nil
         } else {
             commitCurrentWord()
-            proxy.insertText(" ")
+            if let last = proxy.documentContextBeforeInput?.last, last.isNumber {
+                // Invisible left-to-right marks keep "2 4" in order inside Arabic (right-to-left) text.
+                proxy.insertText("\u{200E} \u{200E}")
+            } else {
+                proxy.insertText(" ")
+            }
             lastSpaceTap = now
         }
         lastGlideWord = nil
@@ -752,7 +767,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
             return
         }
         lastCorrection = nil
-        if word { deleteWord() } else { proxy.deleteBackward() }
+        if word { deleteWord() } else { deleteOneCharacter() }
         updateAutoShift()
         reload()
     }
@@ -760,6 +775,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     func keyboardViewSwitchLanguage(_ view: KeyboardView) {
         language = language.toggled
         settings.language = language
+        primaryLanguage = language == .arabic ? "ar" : "en-US"
         mode = .letters
         updateAutoShift()
         reload()
