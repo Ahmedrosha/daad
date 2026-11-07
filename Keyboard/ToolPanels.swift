@@ -306,27 +306,36 @@ final class CalculatorPanelView: UIView {
 
 // MARK: - In-keyboard settings
 
-final class SettingsPanelView: UIView, UITableViewDataSource {
+final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegate {
     var onChange: (() -> Void)?
     var onClose: (() -> Void)?
+    var onOpenLook: (() -> Void)?
 
     private let header = PanelHeader()
-    private let table = UITableView(frame: .zero, style: .plain)
+    private let table = UITableView(frame: .zero, style: .grouped)
     private var theme = KeyboardTheme.make(dark: false)
     private var arabic = true
-    private let rows: [(DaadSetting, String, String)] = [
-        (.numberRow, "صف الأرقام", "Number row"),
-        (.arabicDigits, "أرقام عربية ١٢٣", "Arabic digits ١٢٣"),
-        (.suggestions, "اقتراح الكلمات", "Suggestions"),
-        (.autocorrect, "التصحيح التلقائي", "Autocorrect"),
-        (.glideTyping, "الكتابة بالسحب", "Glide typing"),
-        (.quickPeriod, "نقطة بضغطتين على المسافة", "Double-space period"),
-        (.autoCapitalize, "كابيتال أول الجملة", "Auto-capitalize"),
-        (.keySound, "صوت الضغط", "Key sound"),
-        (.haptics, "اهتزاز الضغط", "Haptics"),
-        (.keyPopups, "معاينة الحرف", "Key pop-ups"),
-        (.emojiSuggestions, "اقتراح إيموجي", "Emoji suggestions"),
-        (.blockOffensive, "منع الكلمات البذيئة", "Block offensive words"),
+
+    private typealias Row = (setting: DaadSetting, ar: String, en: String)
+    private let sections: [(ar: String, en: String, rows: [Row])] = [
+        ("الكتابة", "Typing", [
+            (.suggestions, "اقتراح الكلمات", "Word suggestions"),
+            (.autocorrect, "التصحيح التلقائي", "Autocorrect"),
+            (.glideTyping, "الكتابة بالسحب", "Glide typing"),
+            (.emojiSuggestions, "اقتراح إيموجي", "Emoji suggestions"),
+            (.blockOffensive, "منع الكلمات البذيئة", "Block offensive words"),
+            (.quickPeriod, "نقطة بضغطتين على المسافة", "Double-space period"),
+            (.autoCapitalize, "كابيتال أول الجملة", "Auto-capitalize"),
+        ]),
+        ("شكل الكيبورد", "Layout", [
+            (.numberRow, "صف الأرقام", "Number row"),
+            (.arabicDigits, "أرقام عربية ١٢٣", "Arabic digits ١٢٣"),
+        ]),
+        ("الإحساس", "Feel", [
+            (.keySound, "صوت الضغط", "Key sound"),
+            (.haptics, "اهتزاز الضغط", "Haptics"),
+            (.keyPopups, "معاينة الحرف", "Key pop-ups"),
+        ]),
     ]
 
     override init(frame: CGRect) {
@@ -334,9 +343,9 @@ final class SettingsPanelView: UIView, UITableViewDataSource {
         header.backButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
         addSubview(header)
         table.dataSource = self
+        table.delegate = self
         table.backgroundColor = .clear
         table.rowHeight = 44
-        table.allowsSelection = false
         table.register(UITableViewCell.self, forCellReuseIdentifier: "s")
         addSubview(table)
     }
@@ -348,6 +357,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource {
         self.arabic = arabic
         backgroundColor = theme.background
         header.apply(theme: theme, title: arabic ? "الإعدادات" : "Settings")
+        table.semanticContentAttribute = arabic ? .forceRightToLeft : .forceLeftToRight
         table.reloadData()
     }
 
@@ -357,26 +367,53 @@ final class SettingsPanelView: UIView, UITableViewDataSource {
         table.frame = CGRect(x: 0, y: 44, width: bounds.width, height: bounds.height - 44)
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
+    // Last section is a link to the size & font panel.
+    func numberOfSections(in tableView: UITableView) -> Int { sections.count + 1 }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
+        section < sections.count ? sections[section].rows.count : 1
+    }
+
+    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
+        guard section < sections.count else { return arabic ? "المظهر" : "Look" }
+        return arabic ? sections[section].ar : sections[section].en
+    }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "s", for: indexPath)
-        let row = rows[indexPath.row]
         var content = cell.defaultContentConfiguration()
-        content.text = arabic ? row.1 : row.2
         content.textProperties.color = theme.text
+        cell.backgroundColor = theme.key.withAlphaComponent(0.35)
+        cell.semanticContentAttribute = arabic ? .forceRightToLeft : .forceLeftToRight
+        if indexPath.section == sections.count {
+            content.text = arabic ? "الحجم والخط" : "Size & font"
+            content.image = UIImage(systemName: "textformat.size")
+            content.imageProperties.tintColor = theme.text
+            cell.accessoryView = nil
+            cell.accessoryType = .disclosureIndicator
+            cell.selectionStyle = .default
+        } else {
+            let row = sections[indexPath.section].rows[indexPath.row]
+            content.text = arabic ? row.ar : row.en
+            let toggle = UISwitch()
+            toggle.isOn = SharedSettings.shared.bool(row.setting)
+            toggle.tag = indexPath.section * 100 + indexPath.row
+            toggle.addTarget(self, action: #selector(toggled(_:)), for: .valueChanged)
+            cell.accessoryView = toggle
+            cell.selectionStyle = .none
+        }
         cell.contentConfiguration = content
-        cell.backgroundColor = .clear
-        let toggle = UISwitch()
-        toggle.isOn = SharedSettings.shared.bool(row.0)
-        toggle.tag = indexPath.row
-        toggle.addTarget(self, action: #selector(toggled(_:)), for: .valueChanged)
-        cell.accessoryView = toggle
         return cell
     }
 
+    func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
+        tableView.deselectRow(at: indexPath, animated: true)
+        if indexPath.section == sections.count { onOpenLook?() }
+    }
+
     @objc private func toggled(_ sender: UISwitch) {
-        SharedSettings.shared.set(sender.isOn, for: rows[sender.tag].0)
+        let row = sections[sender.tag / 100].rows[sender.tag % 100]
+        SharedSettings.shared.set(sender.isOn, for: row.setting)
         onChange?()
     }
 

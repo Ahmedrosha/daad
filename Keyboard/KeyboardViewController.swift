@@ -210,6 +210,7 @@ final class KeyboardViewController: UIInputViewController {
             self?.reload(force: true)
         }
         settingsPanel.onChange = { [weak self] in self?.reload(force: true) }
+        settingsPanel.onOpenLook = { [weak self] in self?.showPanel(.look) }
         searchPanel.onClose = { [weak self] in self?.showPanel(.keys) }
         searchPanel.onInsert = { [weak self] text in
             guard let self else { return }
