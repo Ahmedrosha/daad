@@ -39,3 +39,9 @@ jobs:
           xcodebuild build -project Daad.xcodeproj -scheme Daad -configuration Debug \
             -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
+
+      - name: Verify word lists are inside the keyboard
+        run: |
+          FOUND=$(find ~/Library/Developer/Xcode/DerivedData -path "*DaadKeyboard.appex/words_*.txt" | head -n 2)
+          echo "$FOUND"
+          test -n "$FOUND"
