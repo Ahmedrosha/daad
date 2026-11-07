@@ -53,6 +53,9 @@ final class KeyboardViewController: UIInputViewController {
     private let recentsKey = "recentEmojis"
     /// Shortcuts from the app plus the iPhone's own Text Replacements.
     private var textShortcuts: [String: String] = [:]
+    /// Fixed while a space-bar swipe is in progress, so passing over an English word inside Arabic
+    /// text (or the opposite) doesn't flip the direction mid-swipe.
+    private var lockedCursorDirection: Bool?
     private var systemShortcuts: [String: String] = [:]
 
     private lazy var tapHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -914,10 +917,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
         updateAutoShift()
         reload()
     }
-
-    /// Fixed while a space-bar swipe is in progress, so passing over an English word inside Arabic
-    /// text (or the opposite) doesn't flip the direction mid-swipe.
-    private var lockedCursorDirection: Bool?
 
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
         lockedCursorDirection = began ? paragraphIsRightToLeft : nil
