@@ -266,6 +266,9 @@ final class KeyboardViewController: UIInputViewController {
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
         if hasFullAccess { clipboard.captureIfChanged() }
+        // While the space bar moves the cursor, don't rebuild the keys (e.g. auto-Shift at a sentence start):
+        // rebuilding cancels the touch and ends the cursor swipe. Catch up when the finger lifts.
+        guard lockedCursorDirection == nil else { return }
         updateAutoShift()
         reload()
     }
@@ -1295,7 +1298,10 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
         lockedCursorDirection = began ? paragraphIsRightToLeft : nil
-        if !began { updateSuggestions() }
+        if !began {
+            updateAutoShift()
+            reload()   // also refreshes the suggestions
+        }
     }
 
     /// Direction of the current line, from its first real letter (how iOS lays the line out).
