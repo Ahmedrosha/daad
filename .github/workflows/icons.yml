@@ -1,0 +1,33 @@
+name: Make icon concepts
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  icons:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fonts and Pillow
+        run: |
+          sudo apt-get install -y -q libraqm0 > /dev/null || true
+          pip install -q pillow
+          mkdir -p fonts
+          G=https://github.com/google/fonts/raw/main/ofl
+          curl -fsSL "$G/reemkufi/ReemKufi%5Bwght%5D.ttf" -o fonts/ReemKufi.ttf
+          curl -fsSL "$G/arefruqaa/ArefRuqaa-Bold.ttf" -o fonts/ArefRuqaa.ttf
+          curl -fsSL "$G/lalezar/Lalezar-Regular.ttf" -o fonts/Lalezar.ttf
+          curl -fsSL "$G/cairo/Cairo%5Bslnt%2Cwght%5D.ttf" -o fonts/Cairo.ttf
+          ls -la fonts
+      - name: Draw
+        run: python3 scripts/make_icons.py fonts design/icons
+      - name: Save to the repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add design/icons
+          git commit -m "Icon concepts" || echo "no changes"
+          git push
