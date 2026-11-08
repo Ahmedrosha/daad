@@ -11,6 +11,8 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         let title: String
         let detail: String
         let insertText: String
+        var group: String? = nil      // rows with the same group show under one heading (a contact's name)
+        var symbol: String? = nil     // e.g. "phone", "envelope"
     }
 
     var onClose: (() -> Void)?
@@ -22,6 +24,7 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
     private let resultLabel = UILabel()
     private let messageLabel = UILabel()
     private var rows: [Row] = []
+    private var sections: [(title: String?, rows: [Row])] = []
     private var resultText: String?
     private var theme = KeyboardTheme.make(dark: false)
 
@@ -34,7 +37,8 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         table.dataSource = self
         table.delegate = self
         table.backgroundColor = .clear
-        table.rowHeight = 44
+        table.rowHeight = 40
+        table.sectionHeaderTopPadding = 0
         table.register(UITableViewCell.self, forCellReuseIdentifier: "r")
         addSubview(table)
 
@@ -84,6 +88,14 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
 
     func show(rows: [Row]) {
         self.rows = rows
+        sections = []
+        for row in rows {
+            if let last = sections.last, last.title == row.group, row.group != nil {
+                sections[sections.count - 1].rows.append(row)
+            } else {
+                sections.append((row.group, [row]))
+            }
+        }
         resultText = nil
         messageLabel.text = nil
         table.reloadData()
@@ -126,23 +138,46 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         messageLabel.frame = area.insetBy(dx: 20, dy: 4)
     }
 
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { rows.count }
+    func numberOfSections(in tableView: UITableView) -> Int { sections.count }
+
+    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int { sections[section].rows.count }
+
+    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
+        guard let title = sections[section].title else { return nil }
+        let label = UILabel()
+        label.text = "   " + title
+        label.font = UIFont.systemFont(ofSize: 15, weight: .semibold)
+        label.textColor = theme.text
+        label.backgroundColor = theme.background
+        return label
+    }
+
+    func tableView(_ tableView: UITableView, heightForHeaderInSection section: Int) -> CGFloat {
+        sections[section].title == nil ? 0 : 28
+    }
 
     func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
         let cell = tableView.dequeueReusableCell(withIdentifier: "r", for: indexPath)
-        var content = UIListContentConfiguration.subtitleCell()
-        content.text = rows[indexPath.row].title
-        content.secondaryText = rows[indexPath.row].detail
-        content.textProperties.color = theme.text
-        content.secondaryTextProperties.color = theme.secondaryText
+        let row = sections[indexPath.section].rows[indexPath.row]
+        var content = UIListContentConfiguration.valueCell()
+        content.text = row.title
+        content.secondaryText = row.detail
+        content.textProperties.color = theme.secondaryText
+        content.textProperties.font = UIFont.systemFont(ofSize: 14)
+        content.secondaryTextProperties.color = theme.text
+        content.secondaryTextProperties.font = UIFont.monospacedDigitSystemFont(ofSize: 16, weight: .medium)
+        if let symbol = row.symbol {
+            content.image = UIImage(systemName: symbol)
+            content.imageProperties.tintColor = theme.accent
+        }
         cell.contentConfiguration = content
-        cell.backgroundColor = .clear
+        cell.backgroundColor = theme.key.withAlphaComponent(0.25)
         return cell
     }
 
     func tableView(_ tableView: UITableView, didSelectRowAt indexPath: IndexPath) {
         tableView.deselectRow(at: indexPath, animated: true)
-        onInsert?(rows[indexPath.row].insertText)
+        onInsert?(sections[indexPath.section].rows[indexPath.row].insertText)
     }
 
     @objc private func closeTapped() { onClose?() }
@@ -166,15 +201,20 @@ enum ContactsSearcher {
             let predicate = CNContact.predicateForContacts(matchingName: query)
             let contacts = (try? store.unifiedContacts(matching: predicate, keysToFetch: keys)) ?? []
             var rows: [SearchPanelView.Row] = []
+            // One heading per contact; each number/email shows its label (mobile, home, work…).
             for c in contacts.prefix(20) {
                 let name = [c.givenName, c.familyName].filter { !$0.isEmpty }.joined(separator: " ")
                 for phone in c.phoneNumbers {
                     let number = phone.value.stringValue
-                    rows.append(.init(title: name, detail: number, insertText: "\(name): \(number)"))
+                    let label = phone.label.map { CNLabeledValue<CNPhoneNumber>.localizedString(forLabel: $0) } ?? "📞"
+                    rows.append(.init(title: label, detail: number, insertText: "\(name): \(number)",
+                                      group: name, symbol: "phone"))
                 }
                 for email in c.emailAddresses {
                     let address = String(email.value)
-                    rows.append(.init(title: name, detail: address, insertText: "\(name): \(address)"))
+                    let label = email.label.map { CNLabeledValue<NSString>.localizedString(forLabel: $0) } ?? "✉️"
+                    rows.append(.init(title: label, detail: address, insertText: "\(name): \(address)",
+                                      group: name, symbol: "envelope"))
                 }
             }
             DispatchQueue.main.async { completion(rows) }
