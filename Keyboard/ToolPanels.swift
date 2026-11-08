@@ -1,7 +1,7 @@
 import UIKit
 
 enum KeyboardTool: CaseIterable {
-    case emoji, clipboard, translate, calculator, contacts, oneHanded, look, settings
+    case emoji, clipboard, translate, calculator, contacts, editing, oneHanded, look, settings
 
     var symbol: String {
         switch self {
@@ -10,6 +10,7 @@ enum KeyboardTool: CaseIterable {
         case .translate: return "character.bubble"
         case .calculator: return "plusminus.circle"
         case .contacts: return "person.crop.circle"
+        case .editing: return "character.cursor.ibeam"
         case .oneHanded: return "hand.raised"
         case .look: return "textformat.size"
         case .settings: return "gearshape"
@@ -23,6 +24,7 @@ enum KeyboardTool: CaseIterable {
         case .translate: return arabic ? "ترجمة" : "Translate"
         case .calculator: return arabic ? "حاسبة" : "Calculator"
         case .contacts: return arabic ? "جهات الاتصال" : "Contacts"
+        case .editing: return arabic ? "تعديل النص" : "Text editing"
         case .oneHanded: return arabic ? "يد واحدة" : "One-handed"
         case .look: return arabic ? "الحجم والخط" : "Size & font"
         case .settings: return arabic ? "الإعدادات" : "Settings"
@@ -578,6 +580,112 @@ final class LookPanelView: UIView {
         SharedSettings.shared.resetLook()
         configure(theme: theme, arabic: arabic)
         onChange?()
+    }
+
+    @objc private func closeTapped() { onClose?() }
+}
+
+// MARK: - Text editing
+
+enum EditAction {
+    case wordLeft, wordRight, lineStart, lineEnd, textStart, textEnd
+    case up, down, left, right
+    case copy, cut, paste, deleteWord, undo
+}
+
+/// Buttons for moving around and editing text, like Gboard's text-editing panel.
+final class EditPanelView: UIView {
+    var onAction: ((EditAction) -> Void)?
+    var onClose: (() -> Void)?
+
+    private let header = PanelHeader()
+    private var buttons: [(UIButton, EditAction)] = []
+    private var theme = KeyboardTheme.make(dark: false)
+    private let messageLabel = UILabel()
+
+    private let layout: [[(EditAction, String, String, String)]] = [
+        [(.textStart, "arrow.up.to.line", "أول النص", "Top"), (.up, "chevron.up", "", ""),
+         (.textEnd, "arrow.down.to.line", "آخر النص", "Bottom"), (.undo, "arrow.uturn.backward", "تراجع", "Undo")],
+        [(.left, "chevron.left", "", ""), (.down, "chevron.down", "", ""),
+         (.right, "chevron.right", "", ""), (.deleteWord, "delete.left", "مسح كلمة", "Delete word")],
+        [(.wordLeft, "arrow.left.to.line.compact", "كلمة", "Word"), (.lineStart, "arrow.left.to.line", "طرف السطر", "Line edge"),
+         (.lineEnd, "arrow.right.to.line", "طرف السطر", "Line edge"), (.wordRight, "arrow.right.to.line.compact", "كلمة", "Word")],
+        [(.copy, "doc.on.doc", "نسخ", "Copy"), (.cut, "scissors", "قص", "Cut"),
+         (.paste, "doc.on.clipboard", "لصق", "Paste")],
+    ]
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        header.backButton.addTarget(self, action: #selector(closeTapped), for: .touchUpInside)
+        addSubview(header)
+        for row in layout {
+            for item in row {
+                let b = UIButton(type: .system)
+                b.layer.cornerRadius = 8
+                b.addTarget(self, action: #selector(tapped(_:)), for: .touchUpInside)
+                addSubview(b)
+                buttons.append((b, item.0))
+            }
+        }
+        messageLabel.font = UIFont.systemFont(ofSize: 12)
+        messageLabel.textAlignment = .center
+        addSubview(messageLabel)
+    }
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    func configure(theme: KeyboardTheme, arabic: Bool) {
+        self.theme = theme
+        backgroundColor = theme.background
+        header.apply(theme: theme, title: arabic ? "تعديل النص" : "Text editing")
+        messageLabel.textColor = theme.secondaryText
+        messageLabel.text = arabic ? "نسخ وقص بيشتغلوا على الكلام المتحدد" : "Copy and cut work on selected text"
+        var i = 0
+        for row in layout {
+            for item in row {
+                var config = UIButton.Configuration.plain()
+                config.image = UIImage(systemName: item.1, withConfiguration: UIImage.SymbolConfiguration(pointSize: 18))
+                let title = arabic ? item.2 : item.3
+                if !title.isEmpty {
+                    var t = AttributedString(title)
+                    t.font = UIFont.systemFont(ofSize: 12)
+                    config.attributedTitle = t
+                    config.imagePlacement = .top
+                    config.imagePadding = 4
+                }
+                config.baseForegroundColor = theme.text
+                buttons[i].0.configuration = config
+                buttons[i].0.backgroundColor = theme.key.withAlphaComponent(0.6)
+                i += 1
+            }
+        }
+    }
+
+    func flash(_ text: String) {
+        messageLabel.text = text
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        header.frame = CGRect(x: 0, y: 0, width: bounds.width, height: 40)
+        let top: CGFloat = 42, bottomSpace: CGFloat = 20, pad: CGFloat = 5
+        let rows = CGFloat(layout.count)
+        let h = (bounds.height - top - bottomSpace - pad * (rows + 1)) / rows
+        var i = 0
+        for (r, row) in layout.enumerated() {
+            let cols = CGFloat(row.count)
+            let w = (bounds.width - pad * (cols + 1)) / cols
+            for c in 0..<row.count {
+                buttons[i].0.frame = CGRect(x: pad + CGFloat(c) * (w + pad), y: top + pad + CGFloat(r) * (h + pad), width: w, height: h)
+                i += 1
+            }
+        }
+        messageLabel.frame = CGRect(x: 8, y: bounds.height - bottomSpace, width: bounds.width - 16, height: bottomSpace - 4)
+    }
+
+    @objc private func tapped(_ sender: UIButton) {
+        guard let action = buttons.first(where: { $0.0 === sender })?.1 else { return }
+        onAction?(action)
     }
 
     @objc private func closeTapped() { onClose?() }

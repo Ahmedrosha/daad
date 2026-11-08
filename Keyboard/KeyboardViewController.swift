@@ -11,6 +11,7 @@ final class KeyboardViewController: UIInputViewController {
     private let settingsPanel = SettingsPanelView()
     private let searchPanel = SearchPanelView()
     private let lookPanel = LookPanelView()
+    private let editPanel = EditPanelView()
     private var heightConstraint: NSLayoutConstraint?
     private var barHeightConstraint: NSLayoutConstraint?
     private var keyboardLeading: NSLayoutConstraint!
@@ -23,7 +24,7 @@ final class KeyboardViewController: UIInputViewController {
     private let lexicon = Lexicon.shared
     private let clipboard = ClipboardStore()
 
-    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, look, contacts, translate }
+    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, look, editing, contacts, translate }
     private var panel: Panel = .keys
     /// Contacts search and translation are typed with the keyboard's own keys.
     private var isSearching: Bool { panel == .contacts || panel == .translate }
@@ -78,7 +79,7 @@ final class KeyboardViewController: UIInputViewController {
         keyboardView.delegate = self
         keyboardLeading = keyboardView.leadingAnchor.constraint(equalTo: view.leadingAnchor)
         keyboardTrailing = keyboardView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel]
+        let overlays: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel, editPanel]
         for v in [suggestionBar, keyboardView, searchPanel, lookPanel] + overlays {
             v.translatesAutoresizingMaskIntoConstraints = false
             view.addSubview(v)
@@ -190,7 +191,7 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             guard self.hasFullAccess else { return }   // iOS blocks the clipboard without Full Access
             if let text = UIPasteboard.general.string, !text.isEmpty {
-                self.textDocumentProxy.insertText(text)
+                self.recordingUndo { self.textDocumentProxy.insertText(text) }
                 self.feedback(for: .character(text))
                 self.reload()
             }
@@ -205,6 +206,8 @@ final class KeyboardViewController: UIInputViewController {
             self.keyboardViewSwitchLanguage(self.keyboardView)
         }
         lookPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        editPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        editPanel.onAction = { [weak self] action in self?.performEdit(action) }
         lookPanel.onChange = { [weak self] in
             guard let self else { return }
             self.reload(force: true)
@@ -224,6 +227,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.settings.oneHandedMode = self.settings.oneHandedMode == "off" ? "right" : "off"
                 self.showPanel(.keys)
             case .look: self.showPanel(.look)
+            case .editing: self.showPanel(.editing)
             case .settings: self.showPanel(.settings)
             }
         }
@@ -249,7 +253,7 @@ final class KeyboardViewController: UIInputViewController {
         emojiPanel.onInsert = { [weak self] emoji in
             guard let self else { return }
             self.feedback(for: .character(emoji))
-            self.textDocumentProxy.insertText(emoji)
+            self.recordingUndo { self.textDocumentProxy.insertText(emoji) }
             self.addRecent(emoji)
         }
         emojiPanel.onBackspace = { [weak self] in
@@ -297,6 +301,8 @@ final class KeyboardViewController: UIInputViewController {
             settingsPanel.configure(theme: theme, arabic: arabic)
         case .look:
             lookPanel.configure(theme: theme, arabic: arabic)
+        case .editing:
+            editPanel.configure(theme: theme, arabic: arabic)
         case .contacts:
             query = ""
             mode = .letters
@@ -317,6 +323,7 @@ final class KeyboardViewController: UIInputViewController {
         calculatorPanel.isHidden = newPanel != .calculator
         settingsPanel.isHidden = newPanel != .settings
         lookPanel.isHidden = newPanel != .look
+        editPanel.isHidden = newPanel != .editing
         searchPanel.isHidden = !isSearching
         suggestionBar.isHidden = newPanel != .keys
         keyboardView.isHidden = !keysVisible
@@ -588,6 +595,100 @@ final class KeyboardViewController: UIInputViewController {
         return word.isEmpty ? nil : word
     }
 
+    // MARK: Undo and text editing
+
+    /// One change made by the keyboard: text removed before the cursor and text added in its place.
+    private struct EditRecord {
+        var removed: String
+        var added: String
+    }
+    private var undoStack: [EditRecord] = []
+    private var isUndoing = false
+
+    /// Runs a change and remembers it, so "Undo" can reverse it. Letters typed in a row undo as one word.
+    private func recordingUndo(_ body: () -> Void) {
+        guard !isUndoing else { body(); return }
+        let old = Array(proxy.documentContextBeforeInput ?? "")
+        body()
+        let new = Array(proxy.documentContextBeforeInput ?? "")
+        var p = 0
+        while p < old.count, p < new.count, old[p] == new[p] { p += 1 }
+        guard old.count - p <= 300, new.count - p <= 300 else { return }   // the text window moved; skip
+        let record = EditRecord(removed: String(old[p...]), added: String(new[p...]))
+        guard !(record.removed.isEmpty && record.added.isEmpty) else { return }
+        if record.removed.isEmpty, let last = undoStack.last, last.removed.isEmpty,
+           !record.added.contains(where: \.isWhitespace), !(last.added.last?.isWhitespace ?? true) {
+            undoStack[undoStack.count - 1].added += record.added
+        } else {
+            undoStack.append(record)
+            if undoStack.count > 50 { undoStack.removeFirst() }
+        }
+    }
+
+    private func undoLastEdit() -> Bool {
+        guard let record = undoStack.popLast() else { return false }
+        isUndoing = true
+        for _ in 0..<record.added.count { proxy.deleteBackward() }
+        if !record.removed.isEmpty { proxy.insertText(record.removed) }
+        isUndoing = false
+        return true
+    }
+
+    private func performEdit(_ action: EditAction) {
+        let arabic = language == .arabic
+        let before = proxy.documentContextBeforeInput ?? ""
+        let after = proxy.documentContextAfterInput ?? ""
+        let rtl = textIsRightToLeft
+        func wordBack() -> Int {
+            var chars = Array(before), n = 0
+            while let c = chars.last, !c.isLetter && !c.isNumber { chars.removeLast(); n += 1 }
+            while let c = chars.last, c.isLetter || c.isNumber { chars.removeLast(); n += 1 }
+            return n
+        }
+        func wordForward() -> Int {
+            var chars = Array(after)[...], n = 0
+            while let c = chars.first, !c.isLetter && !c.isNumber { chars.removeFirst(); n += 1 }
+            while let c = chars.first, c.isLetter || c.isNumber { chars.removeFirst(); n += 1 }
+            return n
+        }
+        switch action {
+        case .left, .right:
+            let visualRight = action == .right
+            proxy.adjustTextPosition(byCharacterOffset: visualRight == rtl ? -1 : 1)
+        case .up: keyboardView(keyboardView, moveCursorLines: -1)
+        case .down: keyboardView(keyboardView, moveCursorLines: 1)
+        case .wordLeft, .wordRight:
+            let backward = (action == .wordRight) == rtl
+            proxy.adjustTextPosition(byCharacterOffset: backward ? -wordBack() : wordForward())
+        case .lineStart: keyboardView(keyboardView, moveCursorToLineEdge: false)
+        case .lineEnd: keyboardView(keyboardView, moveCursorToLineEdge: true)
+        case .textStart: proxy.adjustTextPosition(byCharacterOffset: -before.count)
+        case .textEnd: proxy.adjustTextPosition(byCharacterOffset: after.count)
+        case .deleteWord:
+            recordingUndo { deleteWord() }
+        case .undo:
+            if !undoLastEdit() { editPanel.flash(arabic ? "مفيش حاجة للتراجع" : "Nothing to undo") }
+        case .copy, .cut:
+            guard hasFullAccess else {
+                editPanel.flash(arabic ? "محتاج Allow Full Access" : "Needs Allow Full Access")
+                return
+            }
+            guard let selected = proxy.selectedText, !selected.isEmpty else {
+                editPanel.flash(arabic ? "حدد كلام الأول" : "Select some text first")
+                return
+            }
+            UIPasteboard.general.string = selected
+            if action == .cut { recordingUndo { proxy.deleteBackward() } }
+            editPanel.flash(arabic ? (action == .cut ? "اتقص ✓" : "اتنسخ ✓") : (action == .cut ? "Cut ✓" : "Copied ✓"))
+        case .paste:
+            guard hasFullAccess, let text = UIPasteboard.general.string, !text.isEmpty else {
+                editPanel.flash(arabic ? "مفيش حاجة منسوخة، أو Allow Full Access مقفول" : "Nothing to paste, or Full Access is off")
+                return
+            }
+            recordingUndo { proxy.insertText(text) }
+        }
+    }
+
     /// The two words before the one being typed, or nil where a sentence starts.
     private func previousTwoWords(skipping current: String) -> (String?, String?) {
         guard var before = proxy.documentContextBeforeInput else { return (nil, nil) }
@@ -695,29 +796,31 @@ final class KeyboardViewController: UIInputViewController {
     private let emojiMarker = "\u{1}"
 
     private func applySuggestion(_ value: String) {
-        if value.hasPrefix(emojiMarker) {
-            // Emoji goes after the word, which stays as typed.
-            let emoji = String(value.dropFirst(emojiMarker.count))
-            let word = currentWord
-            if !word.isEmpty { lexicon.learn(word, after: previousWord(skipping: word)) }
-            proxy.insertText(" " + emoji + " ")
-            addRecent(emoji)
-            feedback(for: .character(emoji))
+        recordingUndo {
+            if value.hasPrefix(emojiMarker) {
+                // Emoji goes after the word, which stays as typed.
+                let emoji = String(value.dropFirst(emojiMarker.count))
+                let word = currentWord
+                if !word.isEmpty { lexicon.learn(word, after: previousWord(skipping: word)) }
+                proxy.insertText(" " + emoji + " ")
+                addRecent(emoji)
+                feedback(for: .character(emoji))
+                reload()
+                return
+            }
+            let word = expansion(for: currentToken) != nil ? currentToken : currentWord
+            let previous = previousWord(skipping: word)
+            for _ in 0..<word.count { proxy.deleteBackward() }
+            proxy.insertText(value + " ")
+            if !value.contains(" ") { lexicon.learn(value, after: previous) }
+            lastCorrection = nil
+            lastGlideWord = nil
+            glideAlternatives = []
+            feedback(for: .character(value))
+            if shift == .on { shift = .off }
+            updateAutoShift()
             reload()
-            return
         }
-        let word = expansion(for: currentToken) != nil ? currentToken : currentWord
-        let previous = previousWord(skipping: word)
-        for _ in 0..<word.count { proxy.deleteBackward() }
-        proxy.insertText(value + " ")
-        if !value.contains(" ") { lexicon.learn(value, after: previous) }
-        lastCorrection = nil
-        lastGlideWord = nil
-        glideAlternatives = []
-        feedback(for: .character(value))
-        if shift == .on { shift = .off }
-        updateAutoShift()
-        reload()
     }
 
     /// Before a space or new line: expand a shortcut, fix the word (autocorrect), and learn it.
@@ -886,72 +989,78 @@ extension KeyboardViewController: KeyboardViewDelegate {
     var popupsEnabled: Bool { settings.bool(.keyPopups) }
 
     func keyboardView(_ view: KeyboardView, didTap action: KeyAction) {
-        if isSearching && handleSearchKey(action) { return }
-        switch action {
-        case .character(let text):
-            insert(text)
-        case .space:
-            handleSpace()
-        case .returnKey:
-            commitCurrentWord()
-            proxy.insertText("\n")
-            lastCorrection = nil
-            updateAutoShift()
-            reload()
-        case .shift:
-            handleShift()
-        case .modeChange(let newMode):
-            mode = newMode
-            updateAutoShift()
-            reload()
-        case .nextKeyboard:
-            advanceToNextInputMode()
-        case .dismiss:
-            dismissKeyboard()
-        case .emoji:
-            showPanel(.emoji)
-        case .arrow(let direction):
-            switch direction {
-            case .left: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? 1 : -1)
-            case .right: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? -1 : 1)
-            case .up: keyboardView(view, moveCursorLines: -1)
-            case .down: keyboardView(view, moveCursorLines: 1)
+        recordingUndo {
+            if isSearching && handleSearchKey(action) { return }
+            switch action {
+            case .character(let text):
+                insert(text)
+            case .space:
+                handleSpace()
+            case .returnKey:
+                commitCurrentWord()
+                proxy.insertText("\n")
+                lastCorrection = nil
+                updateAutoShift()
+                reload()
+            case .shift:
+                handleShift()
+            case .modeChange(let newMode):
+                mode = newMode
+                updateAutoShift()
+                reload()
+            case .nextKeyboard:
+                advanceToNextInputMode()
+            case .dismiss:
+                dismissKeyboard()
+            case .emoji:
+                showPanel(.emoji)
+            case .arrow(let direction):
+                switch direction {
+                case .left: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? 1 : -1)
+                case .right: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? -1 : 1)
+                case .up: keyboardView(view, moveCursorLines: -1)
+                case .down: keyboardView(view, moveCursorLines: 1)
+                }
+                lastCorrection = nil
+                updateSuggestions()
+            case .forwardDelete:
+                guard let after = proxy.documentContextAfterInput, let next = after.first else { return }
+                proxy.adjustTextPosition(byCharacterOffset: next.utf16.count)
+                proxy.deleteBackward()
+                reload()
+            case .backspace:
+                break
             }
-            lastCorrection = nil
-            updateSuggestions()
-        case .forwardDelete:
-            guard let after = proxy.documentContextAfterInput, let next = after.first else { return }
-            proxy.adjustTextPosition(byCharacterOffset: next.utf16.count)
-            proxy.deleteBackward()
-            reload()
-        case .backspace:
-            break
         }
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {
-        if isSearching { _ = handleSearchKey(.character(text)); return }
-        insert(text)
+        recordingUndo {
+            if isSearching { _ = handleSearchKey(.character(text)); return }
+            insert(text)
+        }
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
-        if isSearching {
-            if !query.isEmpty { query.removeLast() }
-            updateSearch()
-            return
-        }
-        // Backspace right after an autocorrect brings back what was typed.
-        if !word, let c = lastCorrection, (proxy.documentContextBeforeInput ?? "").hasSuffix(c.replacement + " ") {
-            for _ in 0..<(c.replacement.count + 1) { proxy.deleteBackward() }
-            proxy.insertText(c.original)
+        recordingUndo {
+            if isSearching {
+                if !query.isEmpty { query.removeLast() }
+                updateSearch()
+                return
+            }
+            // Backspace right after an autocorrect brings back what was typed.
+            if !word, let c = lastCorrection, (proxy.documentContextBeforeInput ?? "").hasSuffix(c.replacement + " ") {
+                for _ in 0..<(c.replacement.count + 1) { proxy.deleteBackward() }
+                proxy.insertText(c.original)
+                lastCorrection = nil
+                reload()
+                return
+            }
             lastCorrection = nil
+            if word { deleteWord() } else { deleteOneCharacter() }
+            updateAutoShift()
             reload()
-            return
         }
-        lastCorrection = nil
-        if word { deleteWord() } else { deleteOneCharacter() }
-        updateAutoShift()
-        reload()
     }
 
     func keyboardViewSwitchLanguage(_ view: KeyboardView) {
@@ -1047,23 +1156,25 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardView(_ view: KeyboardView, didGlide path: [CGPoint], keyCenters: [Character: CGPoint], keyWidth: CGFloat) {
-        var results = GlideDecoder.decode(path: path, keyCenters: keyCenters, keyWidth: keyWidth,
-                                          language: language, lexicon: lexicon)
-        guard !results.isEmpty else { return }
-        if language == .english && shift != .off {
-            results = results.map { shift == .locked ? $0.uppercased() : $0.prefix(1).uppercased() + $0.dropFirst() }
+        recordingUndo {
+            var results = GlideDecoder.decode(path: path, keyCenters: keyCenters, keyWidth: keyWidth,
+                                              language: language, lexicon: lexicon)
+            guard !results.isEmpty else { return }
+            if language == .english && shift != .off {
+                results = results.map { shift == .locked ? $0.uppercased() : $0.prefix(1).uppercased() + $0.dropFirst() }
+            }
+            let word = results[0]
+            // Glided words are separated automatically, like Gboard.
+            if let last = proxy.documentContextBeforeInput?.last, !last.isWhitespace, !"([{\"'«".contains(last) {
+                proxy.insertText(" ")
+            }
+            proxy.insertText(word)
+            lastCorrection = nil
+            lastGlideWord = word
+            glideAlternatives = results
+            if shift == .on { shift = .off }
+            keyboardViewTickFeedback(view)
+            reload()
         }
-        let word = results[0]
-        // Glided words are separated automatically, like Gboard.
-        if let last = proxy.documentContextBeforeInput?.last, !last.isWhitespace, !"([{\"'«".contains(last) {
-            proxy.insertText(" ")
         }
-        proxy.insertText(word)
-        lastCorrection = nil
-        lastGlideWord = word
-        glideAlternatives = results
-        if shift == .on { shift = .off }
-        keyboardViewTickFeedback(view)
-        reload()
     }
-}
