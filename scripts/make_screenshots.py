@@ -20,6 +20,17 @@ def font(size, weight=800):
     return f
 
 
+def fitted(d, text, size, max_width, weight=800):
+    """Largest font up to `size` that fits in max_width."""
+    while size > 40:
+        f = font(size, weight)
+        l, t, r, b = d.textbbox((0, 0), text, font=f, direction="rtl")
+        if r - l <= max_width:
+            return f
+        size -= 4
+    return font(size, weight)
+
+
 def text_center(d, y, text, f, fill):
     l, t, r, b = d.textbbox((0, 0), text, font=f, direction="rtl")
     d.text(((W - (r - l)) / 2 - l, y - t), text, font=f, fill=fill, direction="rtl")
@@ -55,8 +66,8 @@ for i, (name, title, subtitle, bubble) in enumerate(slides, 1):
     img = Image.alpha_composite(img.convert("RGBA"), mark).convert("RGB")
     d = ImageDraw.Draw(img)
     y = 300
-    y += text_center(d, y, title, font(112), (255, 255, 255)) + 70
-    text_center(d, y, subtitle, font(60, 500), (215, 235, 232))
+    y += text_center(d, y, title, fitted(d, title, 112, 1180), (255, 255, 255)) + 70
+    text_center(d, y, subtitle, fitted(d, subtitle, 60, 1200, 500), (215, 235, 232))
 
     shot = Image.open(os.path.join(raw, f"{name}.png")).convert("RGBA")
     if name == "settings":
