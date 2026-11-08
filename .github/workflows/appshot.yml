@@ -1,0 +1,51 @@
+name: App screenshots (simulator, no upload)
+
+# Runs the app on a simulator and saves screenshots of the Home screen (purchase card).
+on:
+  workflow_dispatch:
+
+jobs:
+  shots:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Select Xcode 26
+        run: |
+          XCODE=$(ls -d /Applications/Xcode_26*.app | sort -V | tail -n 1)
+          sudo xcode-select -s "$XCODE"
+
+      - name: Generate project
+        run: |
+          brew install xcodegen
+          mkdir -p Keyboard/Resources
+          xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          set -o pipefail
+          xcodebuild build -project Daad.xcodeproj -scheme Daad -configuration Debug \
+            -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build CODE_SIGNING_ALLOWED=NO | tail -3
+
+      - name: Take screenshots
+        run: |
+          SIM=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; l=[x for r,v in d.items() if 'iOS' in r for x in v if x['name'].startswith('iPhone') and 'Pro' in x['name']]; print(l[-1]['udid'])")
+          xcrun simctl boot "$SIM"
+          xcrun simctl bootstatus "$SIM" -b
+          xcrun simctl status_bar "$SIM" override --time 9:41 --batteryLevel 100 --cellularBars 4 --wifiBars 3
+          xcrun simctl install "$SIM" build/Build/Products/Debug-iphonesimulator/Daad.app
+          mkdir -p shots
+          for LANG in ar en; do
+            xcrun simctl terminate "$SIM" com.daad.keyboard || true
+            xcrun simctl launch "$SIM" com.daad.keyboard -appLanguage $LANG
+            sleep 8
+            xcrun simctl io "$SIM" screenshot "shots/home-$LANG.png"
+          done
+          ls -la shots
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-screenshots
+          path: shots
