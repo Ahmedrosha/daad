@@ -9,12 +9,19 @@ os.makedirs(out, exist_ok=True)
 S = 1024
 
 
-def font(name, size):
+def font(name, size, weight=None):
     path = os.path.join(fonts_dir, name)
     try:
-        return ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.RAQM)
+        f = ImageFont.truetype(path, size, layout_engine=ImageFont.Layout.RAQM)
     except Exception:
-        return ImageFont.truetype(path, size)
+        f = ImageFont.truetype(path, size)
+    if weight:
+        try:
+            axes = f.get_variation_axes()
+            f.set_variation_by_axes([weight if a.get("name", b"") in (b"Weight", "Weight") else a["default"] for a in axes])
+        except Exception:
+            pass
+    return f
 
 
 def gradient(top, bottom):
@@ -47,7 +54,7 @@ img = gradient((13, 120, 110), (6, 64, 70)).convert("RGBA")
 layer = Image.new("RGBA", (S, S), (0, 0, 0, 0))
 d = ImageDraw.Draw(layer)
 keys(d, 790, (255, 255, 255, 60))
-centered(d, "ض", font("ReemKufi.ttf", 640), (255, 255, 255, 255), dy=-90)
+centered(d, "ض", font("ReemKufi.ttf", 600, weight=700), (255, 255, 255, 255), dy=-90)
 Image.alpha_composite(img, layer).convert("RGB").save(f"{out}/concept-a.png")
 
 # B: midnight navy, golden Ruqaa calligraphy
@@ -67,7 +74,7 @@ img.save(f"{out}/concept-c.png")
 # D: blue-purple gradient, the word ضاد with a typing cursor
 img = gradient((59, 91, 219), (124, 58, 237))
 d = ImageDraw.Draw(img)
-centered(d, "ضاد", font("Cairo.ttf", 400), (255, 255, 255), dy=-30)
+centered(d, "ضاد", font("Cairo.ttf", 380, weight=800), (255, 255, 255), dy=-40)
 d.rounded_rectangle([170, 330, 196, 690], radius=13, fill=(255, 255, 255))
 img.save(f"{out}/concept-d.png")
 
