@@ -35,10 +35,10 @@ def rounded(img, radius, top_only=False):
 
 slides = [
     ("suggest", "اقتراحات ذكية بالعربي", "بيتعلم كلامك وبيقترح الكلمة الجاية", "السلام عليكم"),
-    ("franco", "اكتب فرانكو.. يطلع عربي", "تكتب 3aml يقترح عامل", "3aml  ←  عامل"),
+    ("franco", "اكتب فرانكو.. يطلع عربي", "تكتب 3aml يقترح عامل", "FRANCO"),
     ("arabic", "صف أرقام وترتيب الآيفون", "عربي من اليمين للشمال زي ما اتعودت", None),
     ("tools", "كل الأدوات في مكان واحد", "ترجمة • حاسبة • GIF • جهات اتصال • حافظة", None),
-    ("english", "عربي وEnglish في كيبورد واحد", "ضغطة مطوّلة على المسافة تبدّل اللغة", "Hello!  •  أهلاً"),
+    ("english", "عربي و English في كيبورد واحد", "ضغطة مطوّلة على المسافة تبدّل اللغة", "Hello!  •  أهلاً"),
     ("settings", "ظبطه على مزاجك", "ثيمات • خطوط • أحجام • يد واحدة", None),
 ]
 
@@ -48,9 +48,15 @@ for i, (name, title, subtitle, bubble) in enumerate(slides, 1):
     for y in range(H):
         t = y / (H - 1)
         d.line([(0, y), (W, y)], fill=tuple(int(TOP[k] + (BOTTOM[k] - TOP[k]) * t) for k in range(3)))
-    y = 230
-    y += text_center(d, y, title, font(96), (255, 255, 255)) + 60
-    text_center(d, y, subtitle, font(52, 500), (215, 235, 232))
+    # Large faint ض watermark fills the middle.
+    mark = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    md = ImageDraw.Draw(mark)
+    text_center(md, 760, "ض", font(900, 700), (255, 255, 255, 22))
+    img = Image.alpha_composite(img.convert("RGBA"), mark).convert("RGB")
+    d = ImageDraw.Draw(img)
+    y = 300
+    y += text_center(d, y, title, font(112), (255, 255, 255)) + 70
+    text_center(d, y, subtitle, font(60, 500), (215, 235, 232))
 
     shot = Image.open(os.path.join(raw, f"{name}.png")).convert("RGBA")
     if name == "settings":
@@ -62,11 +68,30 @@ for i, (name, title, subtitle, bubble) in enumerate(slides, 1):
         shot = rounded(shot, 56, top_only=True)
         img.paste(shot, (0, H - shot.size[1]), shot)
         if bubble:
-            bf = font(66, 600)
-            l, t, r, b = d.textbbox((0, 0), bubble, font=bf, direction="rtl")
-            bw, bh = r - l + 110, b - t + 80
-            bx, by = W - bw - 90, H - shot.size[1] - bh - 120
-            d.rounded_rectangle([bx, by, bx + bw, by + bh], radius=48, fill=(255, 255, 255))
-            d.text((bx + 55 - l, by + 40 - t), bubble, font=bf, fill=(20, 40, 45), direction="rtl")
+            bf = font(92, 700)
+            ink = (20, 40, 45)
+            if bubble == "FRANCO":
+                # "3aml  →  عامل" drawn in parts so the arrow always shows.
+                left = d.textbbox((0, 0), "3aml", font=bf)
+                right = d.textbbox((0, 0), "عامل", font=bf, direction="rtl")
+                arrow = 130
+                bw = (left[2] - left[0]) + (right[2] - right[0]) + arrow + 160
+                bh = max(left[3] - left[1], right[3] - right[1]) + 100
+                bx, by = (W - bw) // 2, H - shot.size[1] - bh - 300
+                d.rounded_rectangle([bx, by, bx + bw, by + bh], radius=56, fill=(255, 255, 255))
+                x = bx + 80
+                d.text((x - left[0], by + 50 - left[1]), "3aml", font=bf, fill=(120, 130, 135))
+                x += left[2] - left[0] + 25
+                cy = by + bh // 2
+                d.line([(x, cy), (x + arrow - 50, cy)], fill=TOP, width=12)
+                d.polygon([(x + arrow - 50, cy - 26), (x + arrow - 10, cy), (x + arrow - 50, cy + 26)], fill=TOP)
+                x += arrow + 25
+                d.text((x - right[0], by + 50 - right[1]), "عامل", font=bf, fill=ink, direction="rtl")
+            else:
+                l, t, r, b = d.textbbox((0, 0), bubble, font=bf, direction="rtl")
+                bw, bh = r - l + 160, b - t + 100
+                bx, by = (W - bw) // 2, H - shot.size[1] - bh - 300
+                d.rounded_rectangle([bx, by, bx + bw, by + bh], radius=56, fill=(255, 255, 255))
+                d.text((bx + 80 - l, by + 50 - t), bubble, font=bf, fill=ink, direction="rtl")
     img.save(os.path.join(out, f"{i:02d}-{name}.png"))
 print("done")
