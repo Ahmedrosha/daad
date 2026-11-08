@@ -5,10 +5,10 @@ on:
     inputs:
       bg_top:
         description: Top color (hex, no #)
-        default: "0d786e"
+        default: "383d48"
       bg_bottom:
         description: Bottom color (hex, no #)
-        default: "06343a"
+        default: "181b21"
 
 permissions:
   contents: write

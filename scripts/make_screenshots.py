@@ -7,8 +7,9 @@ from PIL import Image, ImageDraw, ImageFont
 fonts_dir, raw, out = sys.argv[1], sys.argv[2], sys.argv[3]
 os.makedirs(out, exist_ok=True)
 W, H = 1320, 2868
-TOP = tuple(int(os.environ.get("BG_TOP", "0d786e")[i:i + 2], 16) for i in (0, 2, 4))
-BOTTOM = tuple(int(os.environ.get("BG_BOTTOM", "06343a")[i:i + 2], 16) for i in (0, 2, 4))
+TOP = tuple(int(os.environ.get("BG_TOP", "383d48")[i:i + 2], 16) for i in (0, 2, 4))
+ACCENT = tuple(int(os.environ.get("ACCENT", "20b296")[i:i + 2], 16) for i in (0, 2, 4))
+BOTTOM = tuple(int(os.environ.get("BG_BOTTOM", "181b21")[i:i + 2], 16) for i in (0, 2, 4))
 
 
 def font(size, weight=800):
@@ -66,8 +67,10 @@ for i, (name, title, subtitle, bubble) in enumerate(slides, 1):
     img = Image.alpha_composite(img.convert("RGBA"), mark).convert("RGB")
     d = ImageDraw.Draw(img)
     y = 300
-    y += text_center(d, y, title, fitted(d, title, 112, 1180), (255, 255, 255)) + 70
-    text_center(d, y, subtitle, fitted(d, subtitle, 60, 1200, 500), (215, 235, 232))
+    y += text_center(d, y, title, fitted(d, title, 112, 1180), (255, 255, 255)) + 34
+    d.rounded_rectangle([W / 2 - 70, y, W / 2 + 70, y + 14], radius=7, fill=ACCENT)
+    y += 14 + 44
+    text_center(d, y, subtitle, fitted(d, subtitle, 60, 1200, 500), (205, 210, 218))
 
     shot = Image.open(os.path.join(raw, f"{name}.png")).convert("RGBA")
     if name == "settings":
@@ -94,8 +97,8 @@ for i, (name, title, subtitle, bubble) in enumerate(slides, 1):
                 d.text((x - left[0], by + 50 - left[1]), "3aml", font=bf, fill=(120, 130, 135))
                 x += left[2] - left[0] + 25
                 cy = by + bh // 2
-                d.line([(x, cy), (x + arrow - 50, cy)], fill=TOP, width=12)
-                d.polygon([(x + arrow - 50, cy - 26), (x + arrow - 10, cy), (x + arrow - 50, cy + 26)], fill=TOP)
+                d.line([(x, cy), (x + arrow - 50, cy)], fill=ACCENT, width=12)
+                d.polygon([(x + arrow - 50, cy - 26), (x + arrow - 10, cy), (x + arrow - 50, cy + 26)], fill=ACCENT)
                 x += arrow + 25
                 d.text((x - right[0], by + 50 - right[1]), "عامل", font=bf, fill=ink, direction="rtl")
             else:
