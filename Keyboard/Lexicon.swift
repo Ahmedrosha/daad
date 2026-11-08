@@ -23,6 +23,8 @@ final class Lexicon {
     private var maxCount: [DaadLanguage: Int] = [:]
     private var learned: [String: Int] = [:]
     private var bigrams: [String: [String: Int]] = [:]
+    /// Bundled next-word tables: context ("word", "w1 w2" or "<s>") → likely next words, best first.
+    private var nextTables: [DaadLanguage: [String: [String]]] = [:]
     private var store: UserDefaults = .standard
     private var unsaved = 0
     /// Keeps rude words out of suggestions (they can still be typed).
@@ -170,12 +172,16 @@ final class Lexicon {
     }
 
     /// Ranked candidates for what is being typed: the word itself (if known), completions and corrections.
-    func rank(_ typed: String, language: DaadLanguage, limit: Int) -> [Candidate] {
+    func rank(_ typed: String, language: DaadLanguage, limit: Int,
+              previous: String? = nil, beforePrevious: String? = nil) -> [Candidate] {
         ensureLoaded(language)
         guard !typed.isEmpty else { return [] }
+        // Words that fit after the previous words get a lift (e.g. "how are y…" → "you").
+        let context = contextScores(previous: previous, beforePrevious: beforePrevious, language: language)
         var best: [String: Candidate] = [:]
-        func add(_ word: String, _ score: Double, _ kind: Candidate.Kind) {
+        func add(_ word: String, _ rawScore: Double, _ kind: Candidate.Kind) {
             if blockOffensive && kind != .exact && WordExtras.isBlocked(word) { return }
+            let score = rawScore + 0.5 * (context[tableKey(word)] ?? 0)
             let w = Lexicon.matchCase(word, like: typed)
             if let old = best[w.lowercased()], old.score >= score { return }
             best[w.lowercased()] = Candidate(word: w, score: score, kind: kind)
@@ -278,10 +284,68 @@ final class Lexicon {
         return top.word
     }
 
-    /// Words the user tends to type after `previous`.
-    func nextWords(after previous: String, limit: Int) -> [String] {
-        guard let followers = bigrams[key(previous)] else { return [] }
-        return followers.filter { $0.value >= 1 && !(blockOffensive && WordExtras.isBlocked($0.key)) }.sorted { $0.value > $1.value }.prefix(limit).map { $0.key }
+    // MARK: Next-word prediction
+
+    private func ensureNextTables(_ language: DaadLanguage) {
+        guard nextTables[language] == nil else { return }
+        var table: [String: [String]] = [:]
+        let names = language == .arabic ? ["next_eg", "next_ar"] : ["next_en"]   // Egyptian first: it wins ties
+        for name in names {
+            guard let url = Bundle(for: Lexicon.self).url(forResource: name, withExtension: "txt"),
+                  let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
+            for line in text.split(whereSeparator: \.isNewline) {
+                let parts = line.split(separator: "\t", maxSplits: 1)
+                guard parts.count == 2 else { continue }
+                let context = String(parts[0])
+                let words = parts[1].split(separator: " ").map(String.init)
+                var merged = table[context] ?? []
+                for w in words where !merged.contains(w) { merged.append(w) }
+                table[context] = merged
+            }
+        }
+        nextTables[language] = table
+    }
+
+    private func tableKey(_ word: String) -> String {
+        String(Lexicon.stripMarks(key(word)))
+    }
+
+    private static func stripMarks(_ text: String) -> String {
+        String(String.UnicodeScalarView(text.unicodeScalars.filter { !(0x064B...0x0652).contains($0.value) && $0.value != 0x0640 }))
+    }
+
+    /// How likely each word is to come next. `previous` nil means the start of a sentence.
+    func contextScores(previous: String?, beforePrevious: String?, language: DaadLanguage) -> [String: Double] {
+        ensureNextTables(language)
+        let table = nextTables[language] ?? [:]
+        var scores: [String: Double] = [:]
+        func add(_ list: [String]?, base: Double, step: Double) {
+            for (i, w) in (list ?? []).enumerated() {
+                scores[w, default: 0] += max(base - step * Double(i), 0.2)
+            }
+        }
+        if let previous {
+            let p1 = tableKey(previous)
+            let p2 = beforePrevious.map(tableKey) ?? "<s>"
+            add(table[p2 + " " + p1], base: 2.5, step: 0.3)     // two words of context
+            add(table[p1], base: 1.5, step: 0.2)
+            // What this user types after that word counts most.
+            for (w, count) in bigrams[key(previous)] ?? [:] {
+                scores[w, default: 0] += 3 + log2(Double(count) + 1)
+            }
+        } else {
+            add(table["<s>"], base: 1.5, step: 0.15)
+        }
+        if blockOffensive { scores = scores.filter { !WordExtras.isBlocked($0.key) } }
+        return scores
+    }
+
+    /// Most likely next words.
+    func predictions(previous: String?, beforePrevious: String?, language: DaadLanguage, limit: Int) -> [String] {
+        contextScores(previous: previous, beforePrevious: beforePrevious, language: language)
+            .sorted { $0.value > $1.value }
+            .prefix(limit)
+            .map { $0.key }
     }
 
     /// Every word glide typing may produce, with how common it is.

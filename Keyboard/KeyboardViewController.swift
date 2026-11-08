@@ -588,6 +588,24 @@ final class KeyboardViewController: UIInputViewController {
         return word.isEmpty ? nil : word
     }
 
+    /// The two words before the one being typed, or nil where a sentence starts.
+    private func previousTwoWords(skipping current: String) -> (String?, String?) {
+        guard var before = proxy.documentContextBeforeInput else { return (nil, nil) }
+        if !current.isEmpty, before.hasSuffix(current) { before.removeLast(current.count) }
+        var found: [String] = []
+        while found.count < 2 {
+            while let last = before.last, last == " " { before.removeLast() }
+            guard let last = before.last, last.isLetter || last == "'" else { break }   // punctuation ends the context
+            var word = ""
+            while let ch = before.last, ch.isLetter || ch == "'" {
+                word.insert(ch, at: word.startIndex)
+                before.removeLast()
+            }
+            found.append(word)
+        }
+        return (found.first, found.count > 1 ? found[1] : nil)
+    }
+
     private func expansion(for token: String) -> String? {
         guard !token.isEmpty else { return nil }
         if let exact = textShortcuts[token] { return exact }
@@ -613,13 +631,24 @@ final class KeyboardViewController: UIInputViewController {
             return
         }
         if word.isEmpty {
-            // After a space: words the user usually types next.
-            if (proxy.documentContextBeforeInput ?? "").last == " ",
-               let previous = previousWord(skipping: ""),
-               case let next = lexicon.nextWords(after: previous, limit: 3), !next.isEmpty {
-                suggestionBar.show(arrange(next.map { Suggestion(title: $0, value: $0, primary: false) }))
-            } else {
+            // After a space: the words most likely to come next.
+            let before = proxy.documentContextBeforeInput ?? ""
+            let trimmed = before.trimmingCharacters(in: .whitespaces)
+            guard before.last == " ", !trimmed.isEmpty else {
+                suggestionBar.showTools()     // empty field: keep the tools handy
+                return
+            }
+            let sentenceStart = trimmed.last.map { ".!?؟\n".contains($0) } ?? true
+            let (p1, p2) = sentenceStart ? (nil, nil) : previousTwoWords(skipping: "")
+            let lang = p1.map(Lexicon.language(of:)) ?? language
+            var next = lexicon.predictions(previous: p1, beforePrevious: p2, language: lang, limit: 3)
+            if lang == .english && (shift != .off) {
+                next = next.map { shift == .locked ? $0.uppercased() : $0.prefix(1).uppercased() + $0.dropFirst() }
+            }
+            if next.isEmpty {
                 suggestionBar.showTools()
+            } else {
+                suggestionBar.show(arrange(next.map { Suggestion(title: $0, value: $0, primary: false) }))
             }
             return
         }
@@ -632,7 +661,8 @@ final class KeyboardViewController: UIInputViewController {
         }
 
         let lang = Lexicon.language(of: word)
-        let ranked = lexicon.rank(word, language: lang, limit: 3)
+        let (p1, p2) = previousTwoWords(skipping: word)
+        let ranked = lexicon.rank(word, language: lang, limit: 3, previous: p1, beforePrevious: p2)
         let known = ranked.contains { $0.kind == .exact }
         let fix = settings.bool(.autocorrect) ? lexicon.autocorrection(for: word, language: lang) : nil
 

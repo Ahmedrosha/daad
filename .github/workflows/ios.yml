@@ -28,6 +28,10 @@ jobs:
           curl -fsSL "$BASE/en/en_50k.txt" -o "$RUNNER_TEMP/words/en.txt"
           perl -CSD -ne 's/\r//; if (/^[\x{0621}-\x{064A}]+ \d+$/) { print; exit if ++$n >= 30000 }' "$RUNNER_TEMP/words/ar.txt" > Keyboard/Resources/words_ar.txt
           perl -ne "s/\r//; if (/^[a-z']+ \d+\$/) { print; exit if ++\$n >= 30000 }" "$RUNNER_TEMP/words/en.txt" > Keyboard/Resources/words_en.txt
+          curl -fsSL https://downloads.tatoeba.org/exports/per_language/eng/eng_sentences.tsv.bz2 -o "$RUNNER_TEMP/words/eng.tsv.bz2" \
+            && python3 scripts/build_ngrams.py "$RUNNER_TEMP/words/eng.tsv.bz2" en Keyboard/Resources || echo "English sentences unavailable"
+          curl -fsSL https://downloads.tatoeba.org/exports/per_language/ara/ara_sentences.tsv.bz2 -o "$RUNNER_TEMP/words/ara.tsv.bz2" \
+            && python3 scripts/build_ngrams.py "$RUNNER_TEMP/words/ara.tsv.bz2" ar Keyboard/Resources || echo "Arabic sentences unavailable"
           wc -l Keyboard/Resources/*.txt
           head -n 3 Keyboard/Resources/words_ar.txt Keyboard/Resources/words_en.txt
 

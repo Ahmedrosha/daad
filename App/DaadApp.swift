@@ -246,7 +246,8 @@ struct SettingsView: View {
                 } header: {
                     Text(t("القاموس", "Dictionary"))
                 } footer: {
-                    Text(t("قوائم الكلمات: FrequencyWords – Hermit Dave (CC BY-SA 4.0)", "Word lists: FrequencyWords – Hermit Dave (CC BY-SA 4.0)"))
+                    Text(t("قوائم الكلمات: FrequencyWords – Hermit Dave (CC BY-SA 4.0). اقتراح الكلمة الجاية: جمل Tatoeba (CC BY 2.0 FR).",
+                           "Word lists: FrequencyWords – Hermit Dave (CC BY-SA 4.0). Next-word data: Tatoeba sentences (CC BY 2.0 FR)."))
                 }
 
                 Section {
