@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 import Contacts
 #if canImport(Translation)
 import Translation
@@ -135,6 +136,12 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.numberRow.rawValue, store: SharedSettings.store) private var numberRow = true
     @AppStorage(DaadSetting.arrowRow.rawValue, store: SharedSettings.store) private var arrowRow = false
     @AppStorage(DaadSetting.franco.rawValue, store: SharedSettings.store) private var franco = true
+    @AppStorage(DaadSetting.splitLandscape.rawValue, store: SharedSettings.store) private var splitLandscape = true
+    @AppStorage("keyboardTheme", store: SharedSettings.store) private var keyboardTheme = "system"
+    @AppStorage("keySoundStyle", store: SharedSettings.store) private var keySoundStyle = "classic"
+    @AppStorage("hapticStyle", store: SharedSettings.store) private var hapticStyle = "light"
+    @State private var photoItem: PhotosPickerItem?
+    @State private var photoSaved = false
     @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
     @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
@@ -187,6 +194,7 @@ struct SettingsView: View {
                     }
                     Toggle(t("صف الأرقام", "Number row"), isOn: $numberRow)
                     Toggle(t("صف أسهم تحريك المؤشر", "Cursor arrow row"), isOn: $arrowRow)
+                    Toggle(t("كيبورد مقسوم في الوضع العرضي", "Split keyboard in landscape"), isOn: $splitLandscape)
                     Toggle(t("رموز وأرقام بالسحب لفوق على الحروف", "Flick up on letters for numbers and symbols"), isOn: $swipeUpSymbols)
                     Toggle(t("التشكيل بالضغط المطوّل على الحرف", "Harakat on long press"), isOn: $harakatOnHold)
                     Toggle(t("أرقام عربية ١٢٣ في الكيبورد العربي", "Arabic digits ١٢٣ on the Arabic keyboard"), isOn: $arabicDigits)
@@ -215,9 +223,46 @@ struct SettingsView: View {
                     Text(t("الحجم والخط", "Size & font"))
                 }
 
+                Section {
+                    Picker(t("الثيم", "Theme"), selection: $keyboardTheme) {
+                        Text(t("زي التليفون", "Match phone")).tag("system")
+                        Text(t("فاتح", "Light")).tag("light")
+                        Text(t("غامق", "Dark")).tag("dark")
+                        Text(t("أزرق", "Ocean")).tag("ocean")
+                        Text(t("أخضر", "Forest")).tag("forest")
+                        Text(t("بنفسجي", "Purple")).tag("purple")
+                        Text(t("رملي", "Sand")).tag("sand")
+                        Text(t("صورة من عندك", "Your photo")).tag("photo")
+                    }
+                    if keyboardTheme == "photo" {
+                        PhotosPicker(selection: $photoItem, matching: .images) {
+                            Label(photoSaved ? t("الصورة اتحفظت ✓", "Photo saved ✓") : t("اختار صورة الخلفية", "Choose background photo"),
+                                  systemImage: "photo")
+                        }
+                        .onChange(of: photoItem) { item in saveBackground(item) }
+                    }
+                } header: {
+                    Text(t("الألوان", "Colors"))
+                } footer: {
+                    Text(t("صورة الخلفية محتاجة Allow Full Access عشان الكيبورد يشوفها.", "The photo background needs Allow Full Access."))
+                }
+
                 Section(t("الإحساس", "Feel")) {
                     Toggle(t("صوت الضغط", "Key sound"), isOn: $keySound)
+                    Picker(t("نوع الصوت", "Sound"), selection: $keySoundStyle) {
+                        Text(t("كلاسيك", "Classic")).tag("classic")
+                        Text(t("رنين", "Tink")).tag("tink")
+                        Text(t("طقة", "Tock")).tag("tock")
+                        Text(t("ناعم", "Soft")).tag("soft")
+                    }
                     Toggle(t("اهتزاز الضغط", "Haptics"), isOn: $haptics)
+                    Picker(t("قوة الاهتزاز", "Haptic strength"), selection: $hapticStyle) {
+                        Text(t("خفيف", "Light")).tag("light")
+                        Text(t("ناعم", "Soft")).tag("soft")
+                        Text(t("متوسط", "Medium")).tag("medium")
+                        Text(t("قوي", "Heavy")).tag("heavy")
+                        Text(t("حاد", "Rigid")).tag("rigid")
+                    }
                     Toggle(t("معاينة الحرف", "Key pop-ups"), isOn: $keyPopups)
                 }
 
@@ -271,6 +316,23 @@ struct SettingsView: View {
                     SharedSettings.shared.requestClearLearned()
                     cleared = true
                 }
+            }
+        }
+    }
+
+    /// Saves the chosen photo, made smaller, where the keyboard can read it.
+    private func saveBackground(_ item: PhotosPickerItem?) {
+        guard let item else { return }
+        Task {
+            guard let data = try? await item.loadTransferable(type: Data.self),
+                  let image = UIImage(data: data), let url = SharedSettings.backgroundImageURL else { return }
+            let width: CGFloat = 900
+            let scale = min(1, width / image.size.width)
+            let size = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            let resized = UIGraphicsImageRenderer(size: size).image { _ in image.draw(in: CGRect(origin: .zero, size: size)) }
+            if let jpeg = resized.jpegData(compressionQuality: 0.8) {
+                try? jpeg.write(to: url, options: .atomic)
+                await MainActor.run { photoSaved = true }
             }
         }
     }

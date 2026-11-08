@@ -61,7 +61,35 @@ final class KeyboardViewController: UIInputViewController {
     private var lockedCursorDirection: Bool?
     private var systemShortcuts: [String: String] = [:]
 
-    private lazy var tapHaptic = UIImpactFeedbackGenerator(style: .light)
+    private lazy var tapHaptic = UIImpactFeedbackGenerator(style: hapticStyle)
+    private let backgroundImageView = UIImageView()
+
+    private var hapticStyle: UIImpactFeedbackGenerator.FeedbackStyle {
+        switch settings.hapticStyle {
+        case "medium": return .medium
+        case "heavy": return .heavy
+        case "soft": return .soft
+        case "rigid": return .rigid
+        default: return .light
+        }
+    }
+
+    private var currentTheme: KeyboardTheme {
+        KeyboardTheme.make(style: settings.keyboardTheme, dark: isDark)
+    }
+
+    /// Shows the photo background when the "photo" theme is chosen (needs Full Access to read it).
+    private func updateBackgroundImage() {
+        guard settings.keyboardTheme == "photo", hasFullAccess,
+              let url = SharedSettings.backgroundImageURL,
+              let image = UIImage(contentsOfFile: url.path) else {
+            backgroundImageView.image = nil
+            backgroundImageView.isHidden = true
+            return
+        }
+        backgroundImageView.image = image
+        backgroundImageView.isHidden = false
+    }
     private lazy var tickHaptic = UISelectionFeedbackGenerator()
 
     private var store: UserDefaults {
@@ -118,6 +146,16 @@ final class KeyboardViewController: UIInputViewController {
             ])
             p.isHidden = true
         }
+        backgroundImageView.contentMode = .scaleAspectFill
+        backgroundImageView.clipsToBounds = true
+        backgroundImageView.translatesAutoresizingMaskIntoConstraints = false
+        view.insertSubview(backgroundImageView, at: 0)
+        NSLayoutConstraint.activate([
+            backgroundImageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backgroundImageView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backgroundImageView.topAnchor.constraint(equalTo: view.topAnchor),
+            backgroundImageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
         wireBars()
         setUpOneHandedStrip()
         requestSupplementaryLexicon { [weak self] lexicon in
@@ -145,7 +183,9 @@ final class KeyboardViewController: UIInputViewController {
         refreshShortcuts()
         updateAutoShift()
         reload(force: true)   // picks up changes made in the app's Settings screen
+        tapHaptic = UIImpactFeedbackGenerator(style: hapticStyle)
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
+        updateBackgroundImage()
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -293,7 +333,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func showPanel(_ newPanel: Panel) {
         panel = newPanel
-        let theme = KeyboardTheme.make(dark: isDark)
+        let theme = currentTheme
         let arabic = language == .arabic
         translateWork?.cancel()
         switch newPanel {
@@ -395,7 +435,7 @@ final class KeyboardViewController: UIInputViewController {
             keyboardView.setNeedsLayout()
         }
         oneHandedStrip.isHidden = !active
-        let tint = KeyboardTheme.make(dark: isDark).text
+        let tint = currentTheme.text
         switchSideButton.tintColor = tint
         expandButton.tintColor = tint
         let top = keyboardView.frame.minY
@@ -550,7 +590,7 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func configureClipboardPanel() {
-        clipboardPanel.configure(theme: .make(dark: isDark), items: clipboard.items, pinned: clipboard.pinned,
+        clipboardPanel.configure(theme: currentTheme, items: clipboard.items, pinned: clipboard.pinned,
                                  arabic: language == .arabic, fullAccess: hasFullAccess)
     }
 
@@ -595,6 +635,7 @@ final class KeyboardViewController: UIInputViewController {
             dark: isDark,
             look: KeyLook.current,
             arabicLayout: settings.arabicLayout,
+            theme: settings.keyboardTheme,
             arrowRow: settings.bool(.arrowRow) && !isSearching,
             swipeUpSymbols: settings.bool(.swipeUpSymbols),
             harakatOnHold: settings.bool(.harakatOnHold))
@@ -602,12 +643,13 @@ final class KeyboardViewController: UIInputViewController {
             currentContext = context
             let layout = Layouts.build(context)
             rowCount = layout.rows.count
-            let theme = KeyboardTheme.make(dark: context.dark)
+            let theme = currentTheme
             keyboardView.configure(rows: layout.rows, maxUnits: layout.maxUnits, theme: theme, look: context.look)
             suggestionBar.apply(theme: theme)
             updateHeight()
         }
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
+        keyboardView.splitWhenWide = settings.bool(.splitLandscape)
         lexicon.blockOffensive = settings.bool(.blockOffensive)
         suggestionBar.setLanguage(language)
         suggestionBar.setArrowsOn(settings.bool(.arrowRow))
@@ -1079,7 +1121,13 @@ final class KeyboardViewController: UIInputViewController {
                 let sound: SystemSoundID
                 switch action {
                 case .backspace, .forwardDelete: sound = 1155
-                case .character, .space: sound = 1104
+                case .character, .space:
+                    switch settings.keySoundStyle {
+                    case "tink": sound = 1103
+                    case "tock": sound = 1105
+                    case "soft": sound = 1123
+                    default: sound = 1104
+                    }
                 default: sound = 1156
                 }
                 AudioServicesPlaySystemSound(sound)

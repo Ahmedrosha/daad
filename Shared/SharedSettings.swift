@@ -19,6 +19,7 @@ enum DaadSetting: String, CaseIterable {
     case franco          // فرانكو ← عربي
     case swipeUpSymbols  // رموز بالسحب لفوق على الحروف
     case harakatOnHold   // التشكيل بالضغط المطوّل
+    case splitLandscape  // كيبورد مقسوم في الوضع العرضي
 
     var defaultValue: Bool {
         switch self {
@@ -65,6 +66,33 @@ final class SharedSettings {
         static let widthScale = "keyboardWidthScale"
         static let font = "keyFont"
         static let arabicLayout = "arabicLayout"
+        static let theme = "keyboardTheme"
+        static let sound = "keySoundStyle"
+        static let haptic = "hapticStyle"
+    }
+
+    /// "system", "light", "dark", "ocean", "forest", "purple", "sand" or "photo".
+    var keyboardTheme: String {
+        get { defaults.string(forKey: Keys.theme) ?? "system" }
+        set { defaults.set(newValue, forKey: Keys.theme) }
+    }
+
+    /// "classic", "tink", "tock" or "soft".
+    var keySoundStyle: String {
+        get { defaults.string(forKey: Keys.sound) ?? "classic" }
+        set { defaults.set(newValue, forKey: Keys.sound) }
+    }
+
+    /// "light", "medium", "heavy", "soft" or "rigid".
+    var hapticStyle: String {
+        get { defaults.string(forKey: Keys.haptic) ?? "light" }
+        set { defaults.set(newValue, forKey: Keys.haptic) }
+    }
+
+    /// Photo chosen in the app as the keyboard background (shared through the App Group).
+    static var backgroundImageURL: URL? {
+        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)?
+            .appendingPathComponent("keyboard-background.jpg")
     }
 
     /// Arabic letter arrangement: "iphone" (like Apple's keyboard) or "gboard".

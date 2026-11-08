@@ -20,6 +20,8 @@ protocol KeyboardViewDelegate: AnyObject {
 final class KeyboardView: UIView {
     weak var delegate: KeyboardViewDelegate?
     var glideEnabled = false
+    /// Splits the letter rows into two halves when the keyboard is wide (landscape).
+    var splitWhenWide = true
 
     private let trail = CAShapeLayer()
 
@@ -82,17 +84,28 @@ final class KeyboardView: UIView {
         super.layoutSubviews()
         guard !rows.isEmpty, bounds.width > 0 else { return }
         let rowHeight = rowHeightValue
-        let unit = bounds.width / maxUnits
+        let split = splitWhenWide && bounds.width > 600
+        let gap = split ? bounds.width * 0.22 : 0
+        let unit = (bounds.width - gap) / maxUnits
         for (ri, row) in rows.enumerated() {
             let total = row.keys.reduce(CGFloat(0)) { $0 + $1.width }
-            var x = (bounds.width - total * unit) / 2
+            // The space bar row and the arrow row stay whole.
+            let splitRow = split && !row.keys.contains { $0.action == .space || { if case .arrow = $0.action { return true }; return false }($0) }
+            var x = (bounds.width - total * unit - (splitRow ? gap : 0)) / 2
             let y = topPadding + CGFloat(ri) * rowHeight
             let views = rowViews[ri]
             let order: [Int] = row.rightToLeft ? Array(views.indices.reversed()) : Array(views.indices)
+            var used: CGFloat = 0
+            var gapAdded = false
             for i in order {
+                if splitRow && !gapAdded && used >= total / 2 - 0.01 {
+                    x += gap
+                    gapAdded = true
+                }
                 let w = row.keys[i].width * unit
                 views[i].frame = CGRect(x: x, y: y, width: w, height: rowHeight)
                 x += w
+                used += row.keys[i].width
             }
         }
     }

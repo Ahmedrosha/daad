@@ -11,6 +11,40 @@ struct KeyboardTheme {
     let popup: UIColor
     let shadow: UIColor
 
+    /// A named theme from the settings; "system" follows light/dark mode.
+    static func make(style: String, dark: Bool) -> KeyboardTheme {
+        func c(_ hex: Int, _ a: CGFloat = 1) -> UIColor {
+            UIColor(red: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
+                    blue: CGFloat(hex & 0xFF) / 255, alpha: a)
+        }
+        switch style {
+        case "light": return make(dark: false)
+        case "dark": return make(dark: true)
+        case "ocean":
+            return KeyboardTheme(background: c(0x0B2E4A), key: c(0x1E5B85), specialKey: c(0x154468), pressedKey: c(0x3A7FB0),
+                                 accent: c(0x38BDF8), text: .white, secondaryText: c(0xBFDBFE), popup: c(0x2A6B98), shadow: .black)
+        case "forest":
+            return KeyboardTheme(background: c(0x14301F), key: c(0x2D6A47), specialKey: c(0x214F36), pressedKey: c(0x46895F),
+                                 accent: c(0x4ADE80), text: .white, secondaryText: c(0xBBF7D0), popup: c(0x357A52), shadow: .black)
+        case "purple":
+            return KeyboardTheme(background: c(0x22163A), key: c(0x523486), specialKey: c(0x3E2768), pressedKey: c(0x7350AD),
+                                 accent: c(0xC084FC), text: .white, secondaryText: c(0xE9D5FF), popup: c(0x5E3D99), shadow: .black)
+        case "sand":
+            return KeyboardTheme(background: c(0xE7DCC3), key: c(0xFFF9EE), specialKey: c(0xCBBC98), pressedKey: c(0xDCCFB0),
+                                 accent: c(0xB45309), text: c(0x3B2F1E), secondaryText: c(0x7A6A4F), popup: c(0xFFF9EE), shadow: c(0x9C8B66))
+        case "photo":
+            // Keys see-through over the photo.
+            return KeyboardTheme(background: .clear,
+                                 key: dark ? UIColor(white: 0.15, alpha: 0.55) : UIColor(white: 1, alpha: 0.7),
+                                 specialKey: dark ? UIColor(white: 0.05, alpha: 0.55) : UIColor(white: 0.85, alpha: 0.7),
+                                 pressedKey: dark ? UIColor(white: 0.4, alpha: 0.7) : UIColor(white: 0.7, alpha: 0.8),
+                                 accent: .systemBlue, text: dark ? .white : .black,
+                                 secondaryText: dark ? UIColor(white: 0.85, alpha: 1) : UIColor(white: 0.25, alpha: 1),
+                                 popup: dark ? UIColor(white: 0.2, alpha: 0.95) : .white, shadow: .black)
+        default: return make(dark: dark)
+        }
+    }
+
     static func make(dark: Bool) -> KeyboardTheme {
         if dark {
             return KeyboardTheme(

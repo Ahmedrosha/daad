@@ -14,6 +14,7 @@ struct LayoutContext: Equatable {
     var arrowRow: Bool = false
     var swipeUpSymbols: Bool = true
     var harakatOnHold: Bool = true
+    var theme: String = "system"
 }
 
 enum Layouts {

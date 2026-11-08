@@ -337,6 +337,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
             (.arrowRow, "صف أسهم تحريك المؤشر", "Cursor arrow row"),
             (.swipeUpSymbols, "رموز بالسحب لفوق", "Flick-up symbols"),
             (.harakatOnHold, "التشكيل بالضغط المطوّل", "Harakat on long press"),
+            (.splitLandscape, "مقسوم في الوضع العرضي", "Split in landscape"),
             (.arabicDigits, "أرقام عربية ١٢٣", "Arabic digits ١٢٣"),
         ]),
         ("الإحساس", "Feel", [
@@ -523,6 +524,44 @@ final class LookPanelView: UIView {
             fontButtons.append(b)
         }
         stack.addArrangedSubview(fontScroll)
+
+        let themeTitle = UILabel()
+        themeTitle.font = UIFont.systemFont(ofSize: 14)
+        themeTitle.tag = 98
+        stack.addArrangedSubview(themeTitle)
+        let themeRow = UIStackView()
+        themeRow.axis = .horizontal
+        themeRow.distribution = .fillEqually
+        themeRow.spacing = 8
+        themeRow.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        for (i, id) in LookPanelView.themes.enumerated() {
+            let b = UIButton(type: .custom)
+            b.tag = i
+            b.layer.cornerRadius = 18
+            b.layer.borderWidth = 1
+            b.backgroundColor = KeyboardTheme.make(style: id, dark: true).key
+            b.addTarget(self, action: #selector(themeTapped(_:)), for: .touchUpInside)
+            themeRow.addArrangedSubview(b)
+            themeButtons.append(b)
+        }
+        stack.addArrangedSubview(themeRow)
+    }
+
+    private static let themes = ["light", "dark", "ocean", "forest", "purple", "sand"]
+    private var themeButtons: [UIButton] = []
+
+    @objc private func themeTapped(_ sender: UIButton) {
+        SharedSettings.shared.keyboardTheme = LookPanelView.themes[sender.tag]
+        refreshThemes()
+        onChange?()
+    }
+
+    private func refreshThemes() {
+        let current = SharedSettings.shared.keyboardTheme
+        for (i, b) in themeButtons.enumerated() {
+            b.layer.borderColor = (LookPanelView.themes[i] == current ? theme.accent : theme.secondaryText.withAlphaComponent(0.4)).cgColor
+            b.layer.borderWidth = LookPanelView.themes[i] == current ? 3 : 1
+        }
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -546,6 +585,12 @@ final class LookPanelView: UIView {
             fontTitle.textAlignment = arabic ? .right : .left
         }
         refreshFonts()
+        refreshThemes()
+        if let themeTitle = stack.arrangedSubviews.first(where: { $0.tag == 98 }) as? UILabel {
+            themeTitle.text = arabic ? "الألوان" : "Colors"
+            themeTitle.textColor = theme.secondaryText
+            themeTitle.textAlignment = arabic ? .right : .left
+        }
     }
 
     private func refreshFonts() {
