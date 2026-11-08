@@ -134,6 +134,7 @@ struct SettingsView: View {
     // Layout
     @AppStorage(DaadSetting.numberRow.rawValue, store: SharedSettings.store) private var numberRow = true
     @AppStorage(DaadSetting.arrowRow.rawValue, store: SharedSettings.store) private var arrowRow = false
+    @AppStorage(DaadSetting.franco.rawValue, store: SharedSettings.store) private var franco = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
     @AppStorage(DaadSetting.rtlMark.rawValue, store: SharedSettings.store) private var rtlMark = false
@@ -171,6 +172,7 @@ struct SettingsView: View {
                     Toggle(t("التصحيح التلقائي", "Autocorrect"), isOn: $autocorrect)
                     Toggle(t("الكتابة بالسحب", "Glide typing"), isOn: $glideTyping)
                     Toggle(t("اقتراح إيموجي", "Emoji suggestions"), isOn: $emojiSuggestions)
+                    Toggle(t("فرانكو ← عربي (3amel ← عامل)", "Franco → Arabic (3amel → عامل)"), isOn: $franco)
                     Toggle(t("منع الكلمات البذيئة من الاقتراحات", "Block offensive words"), isOn: $blockOffensive)
                     Toggle(t("نقطة بضغطتين على المسافة", "Double-space period"), isOn: $quickPeriod)
                     Toggle(t("حرف كابيتال أول الجملة (English)", "Auto-capitalize (English)"), isOn: $autoCapitalize)

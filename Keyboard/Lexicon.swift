@@ -284,6 +284,109 @@ final class Lexicon {
         return top.word
     }
 
+    // MARK: Franco (Arabizi) → Arabic
+
+    private var francoIndex: [String: [(word: String, count: Int)]]?
+
+    /// Consonant outline of an Arabic word, in the same letters Franco uses ("عامل" → "3ml").
+    private static func arabicSkeleton(_ word: String) -> String {
+        let map: [Character: String] = [
+            "ب": "b", "ت": "t", "ث": "t", "ج": "g", "ح": "7", "خ": "5", "د": "d", "ذ": "z", "ر": "r", "ز": "z",
+            "س": "s", "ش": "S", "ص": "s", "ض": "d", "ط": "t", "ظ": "z", "ع": "3", "غ": "G", "ف": "f", "ق": "q",
+            "ك": "k", "ل": "l", "م": "m", "ن": "n", "ه": "h",
+        ]
+        var out = ""
+        for ch in word {
+            guard let m = map[ch], !out.hasSuffix(m) else { continue }   // vowels and hamza are dropped
+            out += m
+        }
+        return out
+    }
+
+    /// Possible outlines of a Franco word ("3amel" → ["3ml"]); "2" can be ء or ق, so it gives two.
+    private static func francoSkeletons(_ text: String) -> [String] {
+        let s = Array(text.lowercased())
+        var outlines = [""]
+        var i = 0
+        func append(_ options: [String]) {
+            outlines = outlines.flatMap { o in options.map { opt in (opt.isEmpty || o.hasSuffix(opt)) ? o : o + opt } }
+        }
+        while i < s.count {
+            let c = s[i]
+            let next: Character? = i + 1 < s.count ? s[i + 1] : nil
+            var step = 1
+            switch (c, next) {
+            case ("s", "h"), ("c", "h"): append(["S"]); step = 2
+            case ("k", "h"), ("7", "'"): append(["5"]); step = 2
+            case ("g", "h"), ("3", "'"): append(["G"]); step = 2
+            case ("t", "h"): append(["t"]); step = 2
+            case ("d", "h"): append(["z"]); step = 2
+            default:
+                switch c {
+                case "2": append(["", "q"])
+                case "3": append(["3"])
+                case "5": append(["5"])
+                case "6": append(["t"])
+                case "7": append(["7"])
+                case "8", "q": append(["q"])
+                case "9": append(["s"])
+                case "b", "p": append(["b"])
+                case "t": append(["t"])
+                case "g", "j": append(["g"])
+                case "d": append(["d"])
+                case "r": append(["r"])
+                case "z": append(["z"])
+                case "s", "c": append(["s"])
+                case "f", "v": append(["f"])
+                case "k": append(["k"])
+                case "l": append(["l"])
+                case "m": append(["m"])
+                case "n": append(["n"])
+                case "h": append(["h"])
+                case "x": append(["k"]); append(["s"])
+                default: break      // vowels, w, y, apostrophes
+                }
+            }
+            i += step
+        }
+        return Array(Set(outlines)).filter { !$0.isEmpty }
+    }
+
+    static func looksLikeFranco(_ token: String) -> Bool {
+        !token.isEmpty && token.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "'") }
+            && token.contains(where: \.isLetter)
+    }
+
+    static func hasFrancoDigit(_ token: String) -> Bool {
+        token.contains { "2356789".contains($0) }
+    }
+
+    /// Arabic words that a Franco word most likely means ("3amel" → "عامل").
+    func francoCandidates(_ token: String, limit: Int) -> [String] {
+        ensureLoaded(.arabic)
+        if francoIndex == nil {
+            var index: [String: [(word: String, count: Int)]] = [:]
+            for entry in entries[.arabic] ?? [] where !entry.word.contains(" ") {
+                let key = Lexicon.arabicSkeleton(entry.word)
+                guard !key.isEmpty else { continue }
+                if (index[key]?.count ?? 0) < 8 { index[key, default: []].append((entry.word, entry.count)) }
+            }
+            francoIndex = index
+        }
+        var found: [String: Double] = [:]
+        let typedLength = Double(token.count)
+        for key in Lexicon.francoSkeletons(token) {
+            for (word, count) in francoIndex?[key] ?? [] {
+                // Prefer common words of a similar length.
+                let lengthGap = abs(Double(word.count) - typedLength * 0.8)
+                var score = log10(Double(count + 1)) - 0.15 * lengthGap
+                if let uses = learned[word] { score += log2(Double(uses) + 1) }
+                found[word] = max(found[word] ?? -.infinity, score)
+            }
+        }
+        return found.sorted { $0.value > $1.value }.prefix(limit).map { $0.key }
+    }
+
     // MARK: Next-word prediction
 
     private func ensureNextTables(_ language: DaadLanguage) {

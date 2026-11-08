@@ -731,6 +731,27 @@ final class KeyboardViewController: UIInputViewController {
                                 Suggestion(title: "\"\(token)\"", value: token, primary: false)])
             return
         }
+        // Franco: "3amel" → عامل. With Franco digits the Arabic takes all slots; otherwise one slot
+        // when the word isn't English.
+        if settings.bool(.franco), Lexicon.looksLikeFranco(token) {
+            let arabic = lexicon.francoCandidates(token, limit: 3)
+            if !arabic.isEmpty {
+                if Lexicon.hasFrancoDigit(token) {
+                    var items = arabic.map { Suggestion(title: $0, value: francoMarker + $0, primary: false) }
+                    if items.count < 3 { items.append(Suggestion(title: "\"\(token)\"", value: token, primary: false)) }
+                    suggestionBar.show(arrange(items))
+                    return
+                } else if !lexicon.isKnown(token, language: .english) {
+                    let english = lexicon.rank(token, language: .english, limit: 2).map {
+                        Suggestion(title: $0.word, value: $0.word, primary: false)
+                    }
+                    let items = [Suggestion(title: arabic[0], value: francoMarker + arabic[0], primary: false)]
+                        + [Suggestion(title: "\"\(token)\"", value: token, primary: false)] + english.prefix(1)
+                    suggestionBar.show(arrange(items))
+                    return
+                }
+            }
+        }
         if word.isEmpty {
             // After a space: the words most likely to come next.
             let before = proxy.documentContextBeforeInput ?? ""
@@ -794,9 +815,21 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private let emojiMarker = "\u{1}"
+    private let francoMarker = "\u{2}"
 
     private func applySuggestion(_ value: String) {
         recordingUndo {
+            if value.hasPrefix(francoMarker) {
+                // Replace the Franco word (letters and digits) with the Arabic one.
+                let arabic = String(value.dropFirst(francoMarker.count))
+                let token = currentToken
+                for _ in 0..<token.count { proxy.deleteBackward() }
+                proxy.insertText(arabic + " ")
+                lexicon.learn(arabic, after: nil)
+                feedback(for: .character(arabic))
+                reload()
+                return
+            }
             if value.hasPrefix(emojiMarker) {
                 // Emoji goes after the word, which stays as typed.
                 let emoji = String(value.dropFirst(emojiMarker.count))

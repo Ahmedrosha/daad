@@ -325,6 +325,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
             (.autocorrect, "التصحيح التلقائي", "Autocorrect"),
             (.glideTyping, "الكتابة بالسحب", "Glide typing"),
             (.emojiSuggestions, "اقتراح إيموجي", "Emoji suggestions"),
+            (.franco, "فرانكو ← عربي", "Franco → Arabic"),
             (.blockOffensive, "منع الكلمات البذيئة", "Block offensive words"),
             (.quickPeriod, "نقطة بضغطتين على المسافة", "Double-space period"),
             (.autoCapitalize, "كابيتال أول الجملة", "Auto-capitalize"),
