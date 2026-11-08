@@ -1,0 +1,37 @@
+name: Make store screenshots
+
+on:
+  workflow_dispatch:
+    inputs:
+      bg_top:
+        description: Top color (hex, no #)
+        default: "0d786e"
+      bg_bottom:
+        description: Bottom color (hex, no #)
+        default: "06343a"
+
+permissions:
+  contents: write
+
+jobs:
+  screenshots:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fonts and Pillow
+        run: |
+          pip install -q pillow
+          mkdir -p fonts
+          curl -fsSL "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo%5Bslnt%2Cwght%5D.ttf" -o fonts/Cairo.ttf
+      - name: Draw
+        env:
+          BG_TOP: ${{ inputs.bg_top }}
+          BG_BOTTOM: ${{ inputs.bg_bottom }}
+        run: python3 scripts/make_screenshots.py fonts design/store/raw design/store/out
+      - name: Save to the repo
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@users.noreply.github.com"
+          git add design/store/out
+          git commit -m "Store screenshots" || echo "no changes"
+          git push
