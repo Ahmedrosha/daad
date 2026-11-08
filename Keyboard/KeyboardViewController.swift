@@ -635,10 +635,10 @@ final class KeyboardViewController: UIInputViewController {
             dark: isDark,
             look: KeyLook.current,
             arabicLayout: settings.arabicLayout,
-            theme: settings.keyboardTheme,
             arrowRow: settings.bool(.arrowRow) && !isSearching,
             swipeUpSymbols: settings.bool(.swipeUpSymbols),
-            harakatOnHold: settings.bool(.harakatOnHold))
+            harakatOnHold: settings.bool(.harakatOnHold),
+            theme: settings.keyboardTheme)
         if force || context != currentContext {
             currentContext = context
             let layout = Layouts.build(context)
