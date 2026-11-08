@@ -87,4 +87,30 @@ final class DaadTests: XCTestCase {
     func testFontsNeverFail() {
         for font in KeyFont.allCases { XCTAssertGreaterThan(font.font(size: 20).pointSize, 0) }
     }
+
+    // MARK: Trial / purchase
+
+    func testAccessStatus() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        XCTAssertEqual(Access.status(AccessState(), now: now), .notStarted)
+        XCTAssertEqual(Access.status(AccessState(trialStart: now), now: now), .trial(daysLeft: 7))
+        let sixDaysAgo = now.addingTimeInterval(-6 * 86_400 - 60)
+        XCTAssertEqual(Access.status(AccessState(trialStart: sixDaysAgo), now: now), .trial(daysLeft: 1))
+        let eightDaysAgo = now.addingTimeInterval(-8 * 86_400)
+        XCTAssertEqual(Access.status(AccessState(trialStart: eightDaysAgo), now: now), .expired)
+        XCTAssertEqual(Access.status(AccessState(purchased: true, trialStart: eightDaysAgo), now: now), .purchased)
+        XCTAssertFalse(AccessStatus.expired.unlocked)
+        XCTAssertFalse(AccessStatus.notStarted.unlocked)
+    }
+
+    func testAccessMergeAndStorage() {
+        let early = Date(timeIntervalSince1970: 100), late = Date(timeIntervalSince1970: 200)
+        let merged = AccessState(trialStart: late).merged(with: AccessState(purchased: true, trialStart: early))
+        XCTAssertEqual(merged, AccessState(purchased: true, trialStart: early))
+        let defaults = UserDefaults(suiteName: "daad.tests.access")!
+        defaults.removePersistentDomain(forName: "daad.tests.access")
+        XCTAssertEqual(Access.load(from: defaults), AccessState())
+        Access.save(merged, to: defaults)
+        XCTAssertEqual(Access.load(from: defaults), merged)
+    }
 }

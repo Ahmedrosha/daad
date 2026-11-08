@@ -3,6 +3,8 @@ import AudioToolbox
 
 final class KeyboardViewController: UIInputViewController {
     private let suggestionBar = SuggestionBarView()
+    private let lockView = LockView()
+    private var access = AccessState()
     private let keyboardView = KeyboardView()
     private let emojiPanel = EmojiPanelView()
     private let clipboardPanel = ClipboardPanelView()
@@ -168,6 +170,52 @@ final class KeyboardViewController: UIInputViewController {
         }
         refreshShortcuts()
         reload(force: true)
+        setUpLockView()
+    }
+
+    // MARK: Trial / purchase lock
+
+    private func setUpLockView() {
+        lockView.translatesAutoresizingMaskIntoConstraints = false
+        lockView.isHidden = true
+        view.addSubview(lockView)
+        NSLayoutConstraint.activate([
+            lockView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            lockView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            lockView.topAnchor.constraint(equalTo: view.topAnchor),
+            lockView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+        ])
+        lockView.globeButton.addTarget(self, action: #selector(handleInputModeList(from:with:)), for: .allTouchEvents)
+        lockView.hideButton.addTarget(self, action: #selector(dismissKeyboard), for: .touchUpInside)
+    }
+
+    /// Reads the purchase state the app shared, the keyboard's own cache, and StoreKit itself
+    /// (StoreKit works even without Full Access), then locks or unlocks the keys.
+    private func loadAccess() {
+        var state = Access.load(from: .standard)
+        if hasFullAccess, let group = SharedSettings.store {
+            state = state.merged(with: Access.load(from: group))
+        }
+        access = state
+        Access.save(state, to: .standard)
+        applyAccess()
+        Task { [weak self] in
+            guard let fromStore = await Access.fromStoreKit() else { return }
+            await MainActor.run {
+                guard let self else { return }
+                self.access = self.access.merged(with: fromStore)
+                Access.save(self.access, to: .standard)
+                self.applyAccess()
+            }
+        }
+    }
+
+    private func applyAccess() {
+        let status = Access.status(access)
+        lockView.isHidden = status.unlocked
+        guard !status.unlocked else { return }
+        lockView.configure(status: status, arabic: language == .arabic, showGlobe: needsInputModeSwitchKey)
+        view.bringSubviewToFront(lockView)
     }
 
     private func refreshShortcuts() {
@@ -186,6 +234,7 @@ final class KeyboardViewController: UIInputViewController {
         tapHaptic = UIImpactFeedbackGenerator(style: hapticStyle)
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
         updateBackgroundImage()
+        loadAccess()
     }
 
     override func viewDidAppear(_ animated: Bool) {

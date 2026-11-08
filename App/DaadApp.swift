@@ -24,6 +24,8 @@ private let defaultAppLanguage = (Locale.preferredLanguages.first ?? "ar").hasPr
 @main
 struct DaadApp: App {
     @AppStorage("appLanguage") private var appLanguage = defaultAppLanguage
+    @StateObject private var store = DaadStore()
+    @Environment(\.scenePhase) private var scenePhase
 
     init() {
         DaadApp.applyDirection(UserDefaults.standard.string(forKey: "appLanguage") ?? defaultAppLanguage)
@@ -31,11 +33,14 @@ struct DaadApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(store: store)
                 .id(appLanguage)   // rebuild screens so UIKit picks up the new direction
                 .environment(\.arabic, appLanguage == "ar")
                 .environment(\.layoutDirection, appLanguage == "ar" ? .rightToLeft : .leftToRight)
                 .onChange(of: appLanguage) { DaadApp.applyDirection($0) }
+                .onChange(of: scenePhase) { phase in
+                    if phase == .active { Task { await store.refresh() } }
+                }
         }
     }
 
@@ -50,10 +55,11 @@ struct DaadApp: App {
 
 struct ContentView: View {
     @Environment(\.arabic) private var ar
+    @ObservedObject var store: DaadStore
 
     var body: some View {
         TabView {
-            HomeView()
+            HomeView(store: store)
                 .tabItem { Label(ar ? "الرئيسية" : "Home", systemImage: "house") }
             SettingsView()
                 .tabItem { Label(ar ? "الإعدادات" : "Settings", systemImage: "gearshape") }
@@ -66,11 +72,13 @@ struct ContentView: View {
 struct HomeView: View {
     @Environment(\.arabic) private var ar
     @Environment(\.openURL) private var openURL
+    @ObservedObject var store: DaadStore
     @State private var testText = ""
 
     var body: some View {
         NavigationStack {
             List {
+                AccessSection(store: store)
                 Section(ar ? "تفعيل الكيبورد" : "Turn on the keyboard") {
                     StepRow(number: 1, text: ar ? "افتح الإعدادات من الزرار تحت" : "Open Settings with the button below")
                     StepRow(number: 2, text: ar ? "ادخل على Keyboards" : "Tap Keyboards")
