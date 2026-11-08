@@ -21,7 +21,9 @@ targets:
     sources:
       - App
       - Shared
-    scheme: {}
+    scheme:
+      testTargets:
+        - DaadTests
     configFiles:
       Release: Config/App.xcconfig
     info:
@@ -80,3 +82,20 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.daad.keyboard.ext
         TARGETED_DEVICE_FAMILY: "1"
         APPLICATION_EXTENSION_API_ONLY: YES
+
+  DaadTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - Tests
+      - Shared
+      - path: Keyboard
+        excludes:
+          - "Info.plist"
+          - "*.entitlements"
+          - "PrivacyInfo.xcprivacy"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.daad.keyboard.tests
+        GENERATE_INFOPLIST_FILE: YES
+        CODE_SIGNING_ALLOWED: NO

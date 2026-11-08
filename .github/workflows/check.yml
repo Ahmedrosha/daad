@@ -44,6 +44,13 @@ jobs:
             -destination 'generic/platform=iOS' CODE_SIGNING_ALLOWED=NO 2>&1 | tee build.log | grep -E "error:|warning: unre|BUILD (SUCCEEDED|FAILED)" || true
           grep -q "BUILD SUCCEEDED" build.log
 
+      - name: Unit tests
+        run: |
+          set -o pipefail
+          SIM=$(xcrun simctl list devices available -j | python3 -c "import json,sys; d=json.load(sys.stdin)['devices']; print(next(x['udid'] for r,l in d.items() if 'iOS' in r for x in l if x['name'].startswith('iPhone')))")
+          xcodebuild test -project Daad.xcodeproj -scheme Daad -destination "id=$SIM" CODE_SIGNING_ALLOWED=NO 2>&1 \
+            | grep -E "Test Case|error:|failed|passed|TEST (SUCCEEDED|FAILED)|Executed" | tail -40
+
       - name: Verify word lists are inside the keyboard
         run: |
           FOUND=$(find ~/Library/Developer/Xcode/DerivedData -path "*DaadKeyboard.appex/words_*.txt" | head -n 2)
