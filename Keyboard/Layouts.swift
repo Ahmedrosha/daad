@@ -12,6 +12,8 @@ struct LayoutContext: Equatable {
     var look: KeyLook = KeyLook()
     var arabicLayout: String = "iphone"
     var arrowRow: Bool = false
+    var swipeUpSymbols: Bool = true
+    var harakatOnHold: Bool = true
 }
 
 enum Layouts {
@@ -54,8 +56,45 @@ enum Layouts {
         case .symbols1, .symbols2:
             result = (symbols(c), 10)
         }
+        if c.mode == .letters && c.swipeUpSymbols { addUpChars(&result.0, c) }
+        if c.mode == .letters && c.language == .arabic && c.harakatOnHold { addHarakat(&result.0) }
         if c.arrowRow { result.0.append(arrowRow(maxUnits: result.1)) }
         return (result.0, result.1)
+    }
+
+    /// Flick up on a letter for a digit (top letter row) or a symbol (other rows).
+    private static func addUpChars(_ rows: inout [KeyRow], _ c: LayoutContext) {
+        let arabic = c.language == .arabic
+        let digits = (arabic && c.arabicDigits) ? arabicDigits : latinDigits
+        let sets: [[String]] = [
+            digits + ["-"],
+            ["@", "#", "$", "%", "&", "*", "-", "+", "=", "/", "\""],
+            arabic ? ["!", "؟", "'", ":", "؛", "_", "~", "/", "،", "…"] : ["!", "?", "'", ":", ";", "_", "~", "/"],
+        ]
+        var letterRow = 0
+        for r in rows.indices {
+            let isLetterRow = rows[r].keys.contains { if case .character(let t) = $0.action { return t.first?.isLetter ?? false }; return false }
+            guard isLetterRow, letterRow < sets.count else { continue }
+            var i = 0
+            for k in rows[r].keys.indices {
+                guard case .character(let t) = rows[r].keys[k].action, t.first?.isLetter ?? false else { continue }
+                if i < sets[letterRow].count { rows[r].keys[k].upChar = sets[letterRow][i] }
+                i += 1
+            }
+            letterRow += 1
+        }
+    }
+
+    /// Long press on an Arabic letter also offers it with harakat (بَ بُ بِ بّ بْ بً).
+    private static func addHarakat(_ rows: inout [KeyRow]) {
+        let marks = ["َ", "ُ", "ِ", "ّ", "ْ", "ً"]
+        for r in rows.indices {
+            for k in rows[r].keys.indices {
+                guard case .character(let t) = rows[r].keys[k].action, t.count == 1,
+                      let ch = t.first, TextHelpers.isArabic(ch), ch.isLetter else { continue }
+                rows[r].keys[k].alternates += marks.map { t + $0 }
+            }
+        }
     }
 
     /// ← ↑ ↓ → for moving the cursor (hold to repeat).

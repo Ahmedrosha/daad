@@ -135,6 +135,8 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.numberRow.rawValue, store: SharedSettings.store) private var numberRow = true
     @AppStorage(DaadSetting.arrowRow.rawValue, store: SharedSettings.store) private var arrowRow = false
     @AppStorage(DaadSetting.franco.rawValue, store: SharedSettings.store) private var franco = true
+    @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
+    @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
     @AppStorage(DaadSetting.rtlMark.rawValue, store: SharedSettings.store) private var rtlMark = false
@@ -185,6 +187,8 @@ struct SettingsView: View {
                     }
                     Toggle(t("صف الأرقام", "Number row"), isOn: $numberRow)
                     Toggle(t("صف أسهم تحريك المؤشر", "Cursor arrow row"), isOn: $arrowRow)
+                    Toggle(t("رموز وأرقام بالسحب لفوق على الحروف", "Flick up on letters for numbers and symbols"), isOn: $swipeUpSymbols)
+                    Toggle(t("التشكيل بالضغط المطوّل على الحرف", "Harakat on long press"), isOn: $harakatOnHold)
                     Toggle(t("أرقام عربية ١٢٣ في الكيبورد العربي", "Arabic digits ١٢٣ on the Arabic keyboard"), isOn: $arabicDigits)
                     Picker(t("وضع اليد الواحدة", "One-handed mode"), selection: $oneHandedMode) {
                         Text(t("مقفول", "Off")).tag("off")

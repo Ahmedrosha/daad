@@ -17,6 +17,8 @@ enum DaadSetting: String, CaseIterable {
     case emojiSuggestions // اقتراح إيموجي
     case arrowRow        // صف أسهم تحريك المؤشر
     case franco          // فرانكو ← عربي
+    case swipeUpSymbols  // رموز بالسحب لفوق على الحروف
+    case harakatOnHold   // التشكيل بالضغط المطوّل
 
     var defaultValue: Bool {
         switch self {

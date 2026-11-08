@@ -49,6 +49,8 @@ struct Key {
     var width: CGFloat = 1
     var style: KeyStyle = .normal
     var smallLabel: Bool = false
+    /// Typed by flicking up on the key (shown small in the corner).
+    var upChar: String? = nil
 }
 
 struct KeyRow {

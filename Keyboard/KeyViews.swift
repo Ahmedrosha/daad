@@ -44,6 +44,7 @@ final class KeyView: UIView {
     private let face = UIView()
     private let label = UILabel()
     private let icon = UIImageView()
+    private let hint = UILabel()
 
     var isHighlighted = false { didSet { updateColors() } }
 
@@ -73,6 +74,12 @@ final class KeyView: UIView {
         label.baselineAdjustment = .alignCenters
         face.addSubview(label)
 
+        if let up = key.upChar {
+            hint.text = up
+            hint.font = UIFont.systemFont(ofSize: 10)
+            hint.textAlignment = .right
+            face.addSubview(hint)
+        }
         if let symbol = key.symbol {
             let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
             icon.image = UIImage(systemName: symbol, withConfiguration: config)
@@ -103,12 +110,14 @@ final class KeyView: UIView {
         let textColor: UIColor = key.style == .accent ? .white : theme.text
         label.textColor = (key.action == .space) ? theme.secondaryText : textColor
         icon.tintColor = textColor
+        hint.textColor = theme.secondaryText
     }
 
     override func layoutSubviews() {
         super.layoutSubviews()
         face.frame = bounds.insetBy(dx: 3, dy: 5)
         label.frame = face.bounds.insetBy(dx: 2, dy: 0)
+        hint.frame = CGRect(x: 2, y: 1, width: face.bounds.width - 5, height: 12)
         icon.frame = face.bounds
         if key.smallLabel {
             label.font = UIFont.systemFont(ofSize: 15)
@@ -199,7 +208,7 @@ final class AlternatesView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func place(over face: CGRect, in container: CGRect) {
-        let cell = max(face.width, 36)
+        let cell = min(max(face.width, 30), (container.width - 12) / CGFloat(max(items.count, 1)))
         let width = cell * CGFloat(items.count) + 8
         let height = max(face.height, 44)
         var x = face.midX - cell / 2 - 4

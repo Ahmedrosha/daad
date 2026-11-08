@@ -201,6 +201,7 @@ final class KeyboardView: UIView {
                     }
                 }
             case .character:
+                tracker.lastMovePoint = p
                 if let alt = tracker.alternates {
                     alt.select(atX: p.x)
                 } else if tracker.gliding {
@@ -209,7 +210,7 @@ final class KeyboardView: UIView {
                         drawTrail(tracker.path)
                     }
                 } else if glideEnabled, trackers.count == 1,
-                          hypot(p.x - tracker.start.x, p.y - tracker.start.y) > max(tracker.keyView.bounds.width * 0.75, 22) {
+                          hypot(p.x - tracker.start.x, p.y - tracker.start.y) > glideStartDistance(tracker, p) {
                     // Finger left the key: this is a swipe across letters (glide typing).
                     tracker.invalidate()
                     tracker.gliding = true
@@ -347,6 +348,11 @@ final class KeyboardView: UIView {
             return
         }
 
+        if !cancelled, let up = flickUpChar(tracker, end: tracker.lastMovePoint) {
+            delegate?.keyboardView(self, insertAlternate: up)
+            return
+        }
+
         switch kv.key.action {
         case .space:
             if tracker.cursorMode {
@@ -363,6 +369,21 @@ final class KeyboardView: UIView {
         default:
             if !cancelled { delegate?.keyboardView(self, didTap: kv.key.action) }
         }
+    }
+
+    /// A mostly-upward move on a key with a flick symbol needs to go further before it counts as glide typing.
+    private func glideStartDistance(_ tracker: TouchTracker, _ p: CGPoint) -> CGFloat {
+        let base = max(tracker.keyView.bounds.width * 0.75, 22)
+        let dx = abs(p.x - tracker.start.x), dy = tracker.start.y - p.y
+        if tracker.keyView.key.upChar != nil && dy > dx * 1.5 { return max(base, tracker.keyView.bounds.height * 1.2) }
+        return base
+    }
+
+    /// The flick-up symbol, if the finger moved clearly upward and stayed near its key.
+    private func flickUpChar(_ tracker: TouchTracker, end: CGPoint) -> String? {
+        guard let up = tracker.keyView.key.upChar else { return nil }
+        let dx = abs(end.x - tracker.start.x), dy = tracker.start.y - end.y
+        return dy > 18 && dy > dx * 1.5 ? up : nil
     }
 
     private func drawTrail(_ points: [CGPoint]) {
@@ -415,6 +436,7 @@ private final class TouchTracker {
     var lastTime: TimeInterval = 0
     var edgeReached = 0     // last flick direction: 1 right, -1 left
     var verticalAnchorX: CGFloat = 0
+    lazy var lastMovePoint: CGPoint = start
     var alternates: AlternatesView?
     var gliding = false
     var path: [CGPoint] = []
