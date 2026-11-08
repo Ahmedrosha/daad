@@ -24,10 +24,12 @@ final class KeyboardViewController: UIInputViewController {
     private let lexicon = Lexicon.shared
     private let clipboard = ClipboardStore()
 
-    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, look, editing, contacts, translate }
+    private enum Panel { case keys, emoji, clipboard, tools, calculator, settings, look, editing, contacts, translate, emojiSearch, gif }
     private var panel: Panel = .keys
     /// Contacts search and translation are typed with the keyboard's own keys.
-    private var isSearching: Bool { panel == .contacts || panel == .translate }
+    private var isSearching: Bool { [.contacts, .translate, .emojiSearch, .gif].contains(panel) }
+    private var gifResults: [GifResult] = []
+    private var gifWork: DispatchWorkItem?
     private var query = ""
     private var translateWork: DispatchWorkItem?
     private let searchHeight: CGFloat = 190
@@ -228,6 +230,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.showPanel(.keys)
             case .look: self.showPanel(.look)
             case .editing: self.showPanel(.editing)
+            case .gif: self.showPanel(.gif)
             case .settings: self.showPanel(.settings)
             }
         }
@@ -261,6 +264,9 @@ final class KeyboardViewController: UIInputViewController {
             self?.textDocumentProxy.deleteBackward()
         }
         emojiPanel.onClose = { [weak self] in self?.showPanel(.keys) }
+        emojiPanel.onSearch = { [weak self] in self?.showPanel(.emojiSearch) }
+        emojiPanel.onGif = { [weak self] in self?.showPanel(.gif) }
+        searchPanel.onPickItem = { [weak self] index in self?.pickSearchItem(index) }
 
         clipboardPanel.onInsert = { [weak self] text in
             self?.textDocumentProxy.insertText(text)
@@ -307,6 +313,15 @@ final class KeyboardViewController: UIInputViewController {
             query = ""
             mode = .letters
             searchPanel.configure(theme: theme, title: arabic ? "جهات الاتصال" : "Contacts", insertTitle: nil)
+        case .emojiSearch:
+            query = ""
+            mode = .letters
+            searchPanel.configure(theme: theme, title: arabic ? "بحث في الإيموجي" : "Search emoji", insertTitle: nil)
+        case .gif:
+            query = ""
+            mode = .letters
+            gifResults = []
+            searchPanel.configure(theme: theme, title: "GIF", insertTitle: nil)
         case .translate:
             query = ""
             mode = .letters
@@ -416,6 +431,46 @@ final class KeyboardViewController: UIInputViewController {
                     self.searchPanel.show(rows: rows)
                 }
             }
+        case .emojiSearch:
+            searchPanel.setQuery(query, placeholder: arabic ? "قلب، ضحك، ورد…" : "heart, laugh, flower…")
+            let found = trimmed.isEmpty ? recents : WordExtras.searchEmoji(trimmed)
+            if found.isEmpty {
+                searchPanel.show(message: arabic ? (trimmed.isEmpty ? "اكتب كلمة زي: قلب" : "مفيش نتايج") : (trimmed.isEmpty ? "Type a word like: heart" : "No results"))
+            } else {
+                searchPanel.show(items: found, images: false)
+            }
+        case .gif:
+            searchPanel.setQuery(query, placeholder: arabic ? "دوّر على GIF…" : "Search GIFs…")
+            guard hasFullAccess else {
+                searchPanel.show(message: arabic ? "الـ GIF محتاج Allow Full Access عشان النت" : "GIFs need Allow Full Access for internet")
+                return
+            }
+            guard GifSearch.apiKey != nil else {
+                searchPanel.show(message: arabic ? "مفتاح GIPHY مش موجود في النسخة دي" : "GIPHY key is missing in this build")
+                return
+            }
+            gifWork?.cancel()
+            let q = trimmed
+            let work = DispatchWorkItem { [weak self] in
+                GifSearch.search(q) { results in
+                    guard let self, self.panel == .gif, self.query.trimmingCharacters(in: .whitespaces) == q else { return }
+                    guard let results else {
+                        self.searchPanel.show(message: arabic ? "مفيش نت" : "No internet connection")
+                        return
+                    }
+                    self.gifResults = results
+                    self.searchPanel.show(items: results.map { _ in "" }, images: true, footer: "Powered by GIPHY")
+                    for (i, r) in results.enumerated() {
+                        GifSearch.loadImage(r.preview) { [weak self] image in
+                            guard let self, let image, self.panel == .gif, i < self.gifResults.count,
+                                  self.gifResults[i].preview == r.preview else { return }
+                            self.searchPanel.setImage(image, at: i)
+                        }
+                    }
+                }
+            }
+            gifWork = work
+            DispatchQueue.main.asyncAfter(deadline: .now() + (q.isEmpty ? 0 : 0.6), execute: work)
         case .translate:
             searchPanel.setQuery(query, placeholder: arabic ? "اكتب النص اللي عايز تترجمه…" : "Type text to translate…")
             translateWork?.cancel()
@@ -448,6 +503,28 @@ final class KeyboardViewController: UIInputViewController {
             }
             translateWork = work
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+        default:
+            break
+        }
+    }
+
+    private func pickSearchItem(_ index: Int) {
+        let arabic = language == .arabic
+        switch panel {
+        case .emojiSearch:
+            let trimmed = query.trimmingCharacters(in: .whitespaces)
+            let found = trimmed.isEmpty ? recents : WordExtras.searchEmoji(trimmed)
+            guard found.indices.contains(index) else { return }
+            recordingUndo { proxy.insertText(found[index]) }
+            addRecent(found[index])
+            feedback(for: .character(found[index]))
+        case .gif:
+            guard gifResults.indices.contains(index) else { return }
+            searchPanel.setFooter(arabic ? "بيتنسخ…" : "Copying…")
+            GifSearch.copy(gifResults[index].full) { [weak self] ok in
+                self?.searchPanel.setFooter(ok ? (arabic ? "اتنسخ ✓ الصق في الشات" : "Copied ✓ Paste it in the chat")
+                                               : (arabic ? "ماتنسخش، جرّب تاني" : "Couldn't copy, try again"))
+            }
         default:
             break
         }

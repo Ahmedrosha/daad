@@ -33,6 +33,38 @@ enum WordExtras {
         return map
     }()
 
+    /// Extra search words for the emoji search (English and Arabic).
+    static let emojiKeywords: [(String, [String])] = [
+        ("smile", ["😀", "😃", "😄", "😊", "🙂"]), ("ضحك", ["😂", "🤣", "😆", "😁"]), ("laugh", ["😂", "🤣", "😆"]),
+        ("love", ["❤️", "😍", "🥰", "😘", "💕"]), ("قلب", ["❤️", "💕", "💖", "💔", "🧡", "💛", "💚", "💙", "💜"]),
+        ("heart", ["❤️", "💕", "💖", "💔"]), ("sad", ["😢", "😭", "😞", "🥺"]), ("زعل", ["😢", "😭", "😞", "😔"]),
+        ("angry", ["😠", "😡", "🤬"]), ("غضب", ["😠", "😡", "🤬"]), ("cool", ["😎", "🆒"]), ("kiss", ["😘", "😗", "💋"]),
+        ("بوسة", ["😘", "😗", "💋"]), ("fire", ["🔥"]), ("party", ["🎉", "🥳", "🎊"]), ("حفلة", ["🎉", "🥳", "🎊"]),
+        ("cake", ["🎂", "🍰"]), ("ok", ["👌", "👍", "✅"]), ("like", ["👍"]), ("clap", ["👏"]), ("تصفيق", ["👏"]),
+        ("pray", ["🙏", "🤲"]), ("دعاء", ["🤲", "🙏"]), ("hand", ["👋", "✋", "🤝", "🙌"]), ("ايد", ["👋", "✋", "🤝", "🙌", "👍"]),
+        ("eyes", ["👀"]), ("عين", ["👀", "😍"]), ("think", ["🤔"]), ("sleep", ["😴", "💤"]), ("نوم", ["😴", "💤", "🛏"]),
+        ("sick", ["🤒", "🤕", "🤢"]), ("money", ["💰", "💵", "💸"]), ("star", ["⭐️", "🌟", "✨"]), ("نجمة", ["⭐️", "🌟", "✨"]),
+        ("sun", ["☀️", "🌞"]), ("moon", ["🌙", "🌝"]), ("قمر", ["🌙", "🌝"]), ("rain", ["🌧️", "☔️"]), ("snow", ["❄️", "☃️"]),
+        ("flower", ["🌹", "🌸", "🌷", "🌻"]), ("rose", ["🌹"]), ("cat", ["🐱", "😺"]), ("dog", ["🐶"]), ("car", ["🚗", "🚕"]),
+        ("home", ["🏠", "🏡"]), ("phone", ["📱", "☎️"]), ("food", ["🍔", "🍕", "🍗", "🍝"]), ("coffee", ["☕️"]),
+        ("tea", ["🍵"]), ("ball", ["⚽️", "🏀"]), ("music", ["🎵", "🎶", "🎧"]), ("gift", ["🎁"]), ("check", ["✅", "✔️"]),
+        ("no", ["❌", "🚫"]), ("warning", ["⚠️"]), ("egypt", ["🇪🇬"]), ("مصر", ["🇪🇬"]), ("saudi", ["🇸🇦"]), ("السعودية", ["🇸🇦"]),
+        ("baby", ["👶", "🍼"]), ("طفل", ["👶"]), ("ramadan", ["🌙", "🏮"]), ("رمضان", ["🌙", "🏮"]), ("mosque", ["🕌", "🕋"]),
+        ("مسجد", ["🕌", "🕋"]), ("strong", ["💪"]), ("قوي", ["💪"]), ("wow", ["😮", "😲", "🤯"]), ("scared", ["😱", "😨"]),
+        ("خوف", ["😱", "😨"]), ("shy", ["😳", "☺️"]), ("كسوف", ["😳", "☺️"]), ("crazy", ["🤪", "😜"]), ("100", ["💯"]),
+    ]
+
+    /// Emoji matching a search word, most relevant first.
+    static func searchEmoji(_ query: String) -> [String] {
+        let q = Lexicon.normalize(query.trimmingCharacters(in: .whitespaces))
+        guard !q.isEmpty else { return [] }
+        var result: [String] = []
+        func add(_ list: [String]) { for e in list where !result.contains(e) { result.append(e) } }
+        for (word, list) in emojiKeywords where Lexicon.normalize(word).hasPrefix(q) { add(list) }
+        for (word, e) in emoji where word.hasPrefix(q) { add([e]) }
+        return result
+    }
+
     /// Never suggested, completed or glided to (the user can still type them).
     static let blocked: Set<String> = {
         let words = [

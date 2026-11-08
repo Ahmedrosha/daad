@@ -1,7 +1,7 @@
 import UIKit
 
 enum KeyboardTool: CaseIterable {
-    case emoji, clipboard, translate, calculator, contacts, editing, oneHanded, look, settings
+    case emoji, gif, clipboard, translate, calculator, contacts, editing, oneHanded, look, settings
 
     var symbol: String {
         switch self {
@@ -11,6 +11,7 @@ enum KeyboardTool: CaseIterable {
         case .calculator: return "plusminus.circle"
         case .contacts: return "person.crop.circle"
         case .editing: return "character.cursor.ibeam"
+        case .gif: return "photo.on.rectangle.angled"
         case .oneHanded: return "hand.raised"
         case .look: return "textformat.size"
         case .settings: return "gearshape"
@@ -25,6 +26,7 @@ enum KeyboardTool: CaseIterable {
         case .calculator: return arabic ? "حاسبة" : "Calculator"
         case .contacts: return arabic ? "جهات الاتصال" : "Contacts"
         case .editing: return arabic ? "تعديل النص" : "Text editing"
+        case .gif: return "GIF"
         case .oneHanded: return arabic ? "يد واحدة" : "One-handed"
         case .look: return arabic ? "الحجم والخط" : "Size & font"
         case .settings: return arabic ? "الإعدادات" : "Settings"

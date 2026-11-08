@@ -38,6 +38,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     var onInsert: ((String) -> Void)?
     var onBackspace: (() -> Void)?
     var onClose: (() -> Void)?
+    var onSearch: (() -> Void)?
+    var onGif: (() -> Void)?
+
+    private let searchButton = UIButton(type: .system)
+    private let gifButton = UIButton(type: .system)
 
     private var sections: [(icon: String, emojis: [String])] = []
     private let collection: UICollectionView
@@ -69,6 +74,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         addSubview(bar)
         addSubview(closeButton)
         addSubview(backspaceButton)
+        searchButton.setImage(UIImage(systemName: "magnifyingglass", withConfiguration: config), for: .normal)
+        searchButton.addTarget(self, action: #selector(searchTapped), for: .touchUpInside)
+        gifButton.setTitle("GIF", for: .normal)
+        gifButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .bold)
+        gifButton.addTarget(self, action: #selector(gifTapped), for: .touchUpInside)
+        addSubview(searchButton)
+        addSubview(gifButton)
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
@@ -78,6 +90,8 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         closeButton.setTitle(closeTitle, for: .normal)
         closeButton.tintColor = theme.text
         backspaceButton.tintColor = theme.text
+        searchButton.tintColor = theme.text
+        gifButton.tintColor = theme.text
         sections = [(icon: "🕘", emojis: recents)] + EmojiData.categories
         bar.arrangedSubviews.forEach { $0.removeFromSuperview() }
         for (i, section) in sections.enumerated() {
@@ -97,9 +111,11 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         let w = bounds.width
         collection.frame = CGRect(x: 0, y: 0, width: w, height: bounds.height - barHeight)
         let y = bounds.height - barHeight
-        closeButton.frame = CGRect(x: 4, y: y, width: 52, height: barHeight)
-        backspaceButton.frame = CGRect(x: w - 52, y: y, width: 48, height: barHeight)
-        bar.frame = CGRect(x: 58, y: y, width: w - 116, height: barHeight)
+        closeButton.frame = CGRect(x: 2, y: y, width: 44, height: barHeight)
+        searchButton.frame = CGRect(x: 46, y: y, width: 36, height: barHeight)
+        gifButton.frame = CGRect(x: 82, y: y, width: 36, height: barHeight)
+        backspaceButton.frame = CGRect(x: w - 44, y: y, width: 42, height: barHeight)
+        bar.frame = CGRect(x: 120, y: y, width: w - 166, height: barHeight)
         collection.collectionViewLayout.invalidateLayout()
     }
 
@@ -137,5 +153,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
     }
 
     @objc private func closeTapped() { onClose?() }
+    @objc private func searchTapped() { onSearch?() }
+    @objc private func gifTapped() { onGif?() }
     @objc private func backspaceTapped() { onBackspace?() }
 }

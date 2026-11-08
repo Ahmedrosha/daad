@@ -61,6 +61,7 @@ targets:
       properties:
         CFBundleDisplayName: ضاد
         NSContactsUsageDescription: ضاد بيستخدم جهات الاتصال عشان تقدر تبحث عن رقم أو إيميل وتكتبه من الكيبورد. البيانات مابتطلعش من تليفونك.
+        GiphyAPIKey: $(GIPHY_API_KEY)
         NSExtension:
           NSExtensionPointIdentifier: com.apple.keyboard-service
           NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).KeyboardViewController

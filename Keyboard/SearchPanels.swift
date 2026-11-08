@@ -17,6 +17,11 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
 
     var onClose: (() -> Void)?
     var onInsert: ((String) -> Void)?
+    var onPickItem: ((Int) -> Void)?
+
+    private let strip = UIScrollView()
+    private var stripViews: [UIView] = []
+    private let footerLabel = UILabel()
 
     private let header = PanelHeader()
     private let queryLabel = UILabel()
@@ -50,6 +55,14 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         messageLabel.textAlignment = .center
         messageLabel.font = UIFont.systemFont(ofSize: 14)
         addSubview(messageLabel)
+
+        strip.showsHorizontalScrollIndicator = false
+        strip.isHidden = true
+        addSubview(strip)
+        footerLabel.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
+        footerLabel.textAlignment = .center
+        footerLabel.isHidden = true
+        addSubview(footerLabel)
 
         queryLabel.font = UIFont.systemFont(ofSize: 17)
         queryLabel.layer.cornerRadius = 8
@@ -86,7 +99,55 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         queryLabel.textAlignment = query.contains(where: TextHelpers.isArabic) || (query.isEmpty && placeholder.contains(where: TextHelpers.isArabic)) ? .right : .left
     }
 
+    /// A row of tappable items: emoji (text) or GIF previews (images loaded later).
+    func show(items: [String], images: Bool, footer: String? = nil) {
+        stripViews.forEach { $0.removeFromSuperview() }
+        stripViews = []
+        rows = []
+        sections = []
+        resultText = nil
+        messageLabel.text = nil
+        table.reloadData()
+        for (i, item) in items.enumerated() {
+            let b = UIButton(type: .custom)
+            b.tag = i
+            b.addTarget(self, action: #selector(itemTapped(_:)), for: .touchUpInside)
+            if images {
+                b.backgroundColor = theme.key
+                b.layer.cornerRadius = 6
+                b.clipsToBounds = true
+                b.imageView?.contentMode = .scaleAspectFill
+            } else {
+                b.setTitle(item, for: .normal)
+                b.titleLabel?.font = UIFont.systemFont(ofSize: 34)
+            }
+            strip.addSubview(b)
+            stripViews.append(b)
+        }
+        footerLabel.text = footer
+        footerLabel.textColor = theme.secondaryText
+        footerLabel.isHidden = footer == nil
+        strip.isHidden = items.isEmpty
+        update()
+        setNeedsLayout()
+    }
+
+    func setFooter(_ text: String) {
+        footerLabel.text = text
+        footerLabel.isHidden = false
+        setNeedsLayout()
+    }
+
+    func setImage(_ image: UIImage, at index: Int) {
+        guard stripViews.indices.contains(index), let b = stripViews[index] as? UIButton else { return }
+        b.setImage(image, for: .normal)
+    }
+
+    @objc private func itemTapped(_ sender: UIButton) { onPickItem?(sender.tag) }
+
     func show(rows: [Row]) {
+        strip.isHidden = true
+        footerLabel.isHidden = true
         self.rows = rows
         sections = []
         for row in rows {
@@ -112,6 +173,8 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
     }
 
     func show(message: String?) {
+        strip.isHidden = true
+        footerLabel.isHidden = true
         messageLabel.text = message
         rows = []
         resultText = nil
@@ -136,6 +199,15 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         table.frame = area
         resultLabel.frame = area.insetBy(dx: 14, dy: 4)
         messageLabel.frame = area.insetBy(dx: 20, dy: 4)
+        footerLabel.frame = CGRect(x: 0, y: area.maxY - 12, width: w, height: 12)
+        strip.frame = CGRect(x: 0, y: area.minY + 4, width: w, height: area.height - (footerLabel.isHidden ? 8 : 18))
+        let side = strip.bounds.height
+        let isImage = (stripViews.first as? UIButton)?.title(for: .normal) == nil
+        let itemWidth = isImage ? side * 1.3 : max(side * 0.8, 44)
+        for (i, v) in stripViews.enumerated() {
+            v.frame = CGRect(x: 6 + CGFloat(i) * (itemWidth + 6), y: 0, width: itemWidth, height: side)
+        }
+        strip.contentSize = CGSize(width: 6 + CGFloat(stripViews.count) * (itemWidth + 6), height: side)
     }
 
     func numberOfSections(in tableView: UITableView) -> Int { sections.count }
@@ -252,5 +324,68 @@ enum Translator {
         }
         #endif
         completion(nil, .unsupportedSystem)
+    }
+}
+
+// MARK: - GIF search (GIPHY)
+
+struct GifResult {
+    let preview: URL
+    let full: URL
+}
+
+enum GifSearch {
+    /// Key comes from the GIPHY_API_KEY build setting (a GitHub secret), never from the source code.
+    static var apiKey: String? {
+        let key = Bundle.main.object(forInfoDictionaryKey: "GiphyAPIKey") as? String
+        guard let key, !key.isEmpty, !key.hasPrefix("$(") else { return nil }
+        return key
+    }
+
+    static func search(_ query: String, completion: @escaping ([GifResult]?) -> Void) {
+        guard let key = apiKey else { completion(nil); return }
+        var components: URLComponents
+        if query.trimmingCharacters(in: .whitespaces).isEmpty {
+            components = URLComponents(string: "https://api.giphy.com/v1/gifs/trending")!
+            components.queryItems = [URLQueryItem(name: "api_key", value: key), URLQueryItem(name: "limit", value: "24"),
+                                     URLQueryItem(name: "rating", value: "pg-13")]
+        } else {
+            components = URLComponents(string: "https://api.giphy.com/v1/gifs/search")!
+            components.queryItems = [URLQueryItem(name: "api_key", value: key), URLQueryItem(name: "q", value: query),
+                                     URLQueryItem(name: "limit", value: "24"), URLQueryItem(name: "rating", value: "pg-13")]
+        }
+        guard let url = components.url else { completion(nil); return }
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            var results: [GifResult] = []
+            if let data, let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let items = json["data"] as? [[String: Any]] {
+                for item in items {
+                    guard let images = item["images"] as? [String: Any],
+                          let still = (images["fixed_height_small_still"] as? [String: Any])?["url"] as? String,
+                          let full = ((images["downsized"] ?? images["fixed_height"]) as? [String: Any])?["url"] as? String,
+                          let p = URL(string: still), let f = URL(string: full) else { continue }
+                    results.append(GifResult(preview: p, full: f))
+                }
+            }
+            DispatchQueue.main.async { completion(data == nil ? nil : results) }
+        }.resume()
+    }
+
+    static func loadImage(_ url: URL, completion: @escaping (UIImage?) -> Void) {
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            let image = data.flatMap(UIImage.init(data:))
+            DispatchQueue.main.async { completion(image) }
+        }.resume()
+    }
+
+    /// Copies the GIF so it can be pasted into the chat (keyboards can't insert images directly).
+    static func copy(_ url: URL, completion: @escaping (Bool) -> Void) {
+        URLSession.shared.dataTask(with: url) { data, _, _ in
+            DispatchQueue.main.async {
+                guard let data else { completion(false); return }
+                UIPasteboard.general.setData(data, forPasteboardType: "com.compuserve.gif")
+                completion(true)
+            }
+        }.resume()
     }
 }
