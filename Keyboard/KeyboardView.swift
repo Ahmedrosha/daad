@@ -215,6 +215,17 @@ final class KeyboardView: UIView {
                 }
             case .character:
                 tracker.lastMovePoint = p
+                let moved = hypot(p.x - tracker.start.x, p.y - tracker.start.y)
+                // Moving cancels the long-press menu: holding still is a long press, moving is a flick or glide.
+                if tracker.alternates == nil && moved > 10 { tracker.invalidate() }
+                // Show the flick symbol in the bubble while flicking up.
+                if tracker.alternates == nil, !tracker.gliding, let up = tracker.keyView.key.upChar {
+                    let flicking = flickUpChar(tracker, end: p) != nil
+                    if flicking != tracker.showingFlick, delegate?.popupsEnabled ?? true {
+                        tracker.showingFlick = flicking
+                        popup.show(flicking ? up : tracker.keyView.key.label, over: tracker.keyView.faceFrameInParent, in: bounds)
+                    }
+                }
                 if let alt = tracker.alternates {
                     alt.select(atX: p.x)
                 } else if tracker.gliding {
@@ -388,7 +399,8 @@ final class KeyboardView: UIView {
     private func glideStartDistance(_ tracker: TouchTracker, _ p: CGPoint) -> CGFloat {
         let base = max(tracker.keyView.bounds.width * 0.75, 22)
         let dx = abs(p.x - tracker.start.x), dy = tracker.start.y - p.y
-        if tracker.keyView.key.upChar != nil && dy > dx * 1.5 { return max(base, tracker.keyView.bounds.height * 1.2) }
+        // An upward move is a flick unless it clearly travels on to other keys.
+        if tracker.keyView.key.upChar != nil && dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
         return base
     }
 
@@ -396,7 +408,7 @@ final class KeyboardView: UIView {
     private func flickUpChar(_ tracker: TouchTracker, end: CGPoint) -> String? {
         guard let up = tracker.keyView.key.upChar else { return nil }
         let dx = abs(end.x - tracker.start.x), dy = tracker.start.y - end.y
-        return dy > 18 && dy > dx * 1.5 ? up : nil
+        return dy > 16 && dy > dx ? up : nil
     }
 
     private func drawTrail(_ points: [CGPoint]) {
@@ -452,6 +464,7 @@ private final class TouchTracker {
     lazy var lastMovePoint: CGPoint = start
     var alternates: AlternatesView?
     var gliding = false
+    var showingFlick = false
     var path: [CGPoint] = []
 
     init(keyView: KeyView, start: CGPoint) {
