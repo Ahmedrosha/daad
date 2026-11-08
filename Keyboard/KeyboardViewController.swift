@@ -240,6 +240,23 @@ final class KeyboardViewController: UIInputViewController {
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         allowImmediateTouches()
+        // Some apps (WhatsApp) read the language before their text box is ready, so the cursor can open
+        // on the wrong side. Say it again once the keyboard is up, and once more a moment later.
+        announceLanguage()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.announceLanguage() }
+    }
+
+    /// Re-sends the keyboard language the same way switching languages does (to the other and back),
+    /// so an empty text box puts the cursor on the right for Arabic and on the left for English.
+    private func announceLanguage() {
+        let empty = (proxy.documentContextBeforeInput ?? "").isEmpty && (proxy.documentContextAfterInput ?? "").isEmpty
+        guard empty else { return }   // with text in the box, the text itself decides the side
+        let code = language == .arabic ? "ar" : "en-US"
+        primaryLanguage = code == "ar" ? "en-US" : "ar"
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
+            guard let self else { return }
+            self.primaryLanguage = self.language == .arabic ? "ar" : "en-US"
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
