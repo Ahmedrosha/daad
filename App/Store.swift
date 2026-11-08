@@ -146,10 +146,14 @@ struct AccessSection: View {
         Button {
             Task { await store.buyLifetime(arabic: ar) }
         } label: {
-            Label(ar ? "اشترِ ضاد مدى الحياة\(store.lifetimePrice.map { " – \($0)" } ?? "")"
-                     : "Buy Daad for life\(store.lifetimePrice.map { " – \($0)" } ?? "")",
-                  systemImage: "cart")
-                .fontWeight(.semibold)
+            HStack {
+                Label(ar ? "اشترِ ضاد مدى الحياة" : "Buy Daad for life", systemImage: "cart")
+                    .fontWeight(.semibold)
+                Spacer()
+                if let price = store.lifetimePrice {
+                    Text(price).fontWeight(.semibold)   // its own view, so Arabic/English order can't flip it
+                }
+            }
         }
     }
 }
