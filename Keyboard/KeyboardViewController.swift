@@ -231,13 +231,25 @@ final class KeyboardViewController: UIInputViewController {
         suggestionBar.onCalculator = { [weak self] in self?.showPanel(.calculator) }
         suggestionBar.onPaste = { [weak self] in
             guard let self else { return }
-            guard self.hasFullAccess else { return }   // iOS blocks the clipboard without Full Access
-            if let text = UIPasteboard.general.string, !text.isEmpty {
+            let arabic = self.language == .arabic
+            guard self.hasFullAccess else {   // iOS blocks the clipboard without Full Access
+                self.suggestionBar.flash(arabic ? "اللصق محتاج Allow Full Access" : "Paste needs Allow Full Access")
+                return
+            }
+            let board = UIPasteboard.general
+            if let text = board.string, !text.isEmpty {
                 self.recordingUndo { self.textDocumentProxy.insertText(text) }
                 self.feedback(for: .character(text))
                 self.reload()
+            } else if board.hasImages || board.contains(pasteboardTypes: ["com.compuserve.gif"]) {
+                // Keyboards can only type text; a GIF or picture has to be pasted by the app itself.
+                self.suggestionBar.flash(arabic ? "اضغط مطوّل في خانة الكتابة واختار لصق (Paste)"
+                                                : "Long-press the text box and choose Paste")
+            } else {
+                self.suggestionBar.flash(arabic ? "مفيش حاجة منسوخة" : "Nothing copied")
             }
         }
+        suggestionBar.onGif = { [weak self] in self?.showPanel(.gif) }
         suggestionBar.onArrows = { [weak self] in
             guard let self else { return }
             self.settings.set(!self.settings.bool(.arrowRow), for: .arrowRow)
@@ -562,7 +574,7 @@ final class KeyboardViewController: UIInputViewController {
             guard gifResults.indices.contains(index) else { return }
             searchPanel.setFooter(arabic ? "بيتنسخ…" : "Copying…")
             GifSearch.copy(gifResults[index].full) { [weak self] ok in
-                self?.searchPanel.setFooter(ok ? (arabic ? "اتنسخ ✓ الصق في الشات" : "Copied ✓ Paste it in the chat")
+                self?.searchPanel.setFooter(ok ? (arabic ? "اتنسخ ✓ اضغط مطوّل في خانة الكتابة واختار لصق" : "Copied ✓ Long-press the text box and choose Paste")
                                                : (arabic ? "ماتنسخش، جرّب تاني" : "Couldn't copy, try again"))
             }
         default:

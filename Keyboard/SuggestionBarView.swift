@@ -17,6 +17,7 @@ final class SuggestionBarView: UIView {
     var onLanguage: (() -> Void)?
     var onPaste: (() -> Void)?
     var onArrows: (() -> Void)?
+    var onGif: (() -> Void)?
 
     private let dismissButton = UIButton(type: .system)
     private let emojiButton = UIButton(type: .system)
@@ -26,6 +27,9 @@ final class SuggestionBarView: UIView {
     private let languageButton = UIButton(type: .system)
     private let pasteButton = UIButton(type: .system)
     private let arrowsButton = UIButton(type: .system)
+    private let gifButton = UIButton(type: .system)
+    private let toastLabel = UILabel()
+    private var toastWork: DispatchWorkItem?
     private var arrowsOn = false
     private var suggestionButtons: [UIButton] = []
     private var dividers: [UIView] = []
@@ -42,6 +46,17 @@ final class SuggestionBarView: UIView {
         configure(arrowsButton, symbol: "arrow.up.and.down.and.arrow.left.and.right", action: #selector(arrowsTapped))
         configure(toolsButton, symbol: "square.grid.2x2", action: #selector(toolsTapped))
         configure(calculatorButton, symbol: "plusminus.circle", action: #selector(calculatorTapped))
+        gifButton.setTitle("GIF", for: .normal)
+        gifButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
+        gifButton.addTarget(self, action: #selector(gifTapped), for: .touchUpInside)
+        addSubview(gifButton)
+        toastLabel.textAlignment = .center
+        toastLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
+        toastLabel.numberOfLines = 2
+        toastLabel.adjustsFontSizeToFitWidth = true
+        toastLabel.minimumScaleFactor = 0.7
+        toastLabel.isHidden = true
+        addSubview(toastLabel)
         languageButton.titleLabel?.font = UIFont.systemFont(ofSize: 18, weight: .medium)
         languageButton.addTarget(self, action: #selector(languageTapped), for: .touchUpInside)
         addSubview(languageButton)
@@ -76,8 +91,22 @@ final class SuggestionBarView: UIView {
         for b in [dismissButton, emojiButton, clipboardButton, toolsButton, calculatorButton, pasteButton] { b.tintColor = theme.text }
         arrowsButton.tintColor = arrowsOn ? theme.accent : theme.text
         languageButton.setTitleColor(theme.text, for: .normal)
+        gifButton.setTitleColor(theme.text, for: .normal)
+        toastLabel.textColor = theme.text
+        toastLabel.backgroundColor = theme.background
         for b in suggestionButtons { b.setTitleColor(theme.text, for: .normal) }
         for d in dividers { d.backgroundColor = theme.secondaryText.withAlphaComponent(0.35) }
+    }
+
+    /// A short message over the bar for a couple of seconds.
+    func flash(_ text: String) {
+        toastWork?.cancel()
+        toastLabel.text = text
+        toastLabel.isHidden = false
+        bringSubviewToFront(toastLabel)
+        let work = DispatchWorkItem { [weak self] in self?.toastLabel.isHidden = true }
+        toastWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3, execute: work)
     }
 
     /// Arrow-row button is highlighted while the arrows are shown.
@@ -100,6 +129,7 @@ final class SuggestionBarView: UIView {
         calculatorButton.isHidden = false
         pasteButton.isHidden = false
         arrowsButton.isHidden = false
+        gifButton.isHidden = false
         suggestionButtons.forEach { $0.isHidden = true }
         dividers.forEach { $0.isHidden = true }
     }
@@ -114,6 +144,7 @@ final class SuggestionBarView: UIView {
         calculatorButton.isHidden = true
         pasteButton.isHidden = true
         arrowsButton.isHidden = true
+        gifButton.isHidden = true
         values = suggestions.map { $0.value }
         for (i, b) in suggestionButtons.enumerated() {
             if i < suggestions.count {
@@ -136,8 +167,9 @@ final class SuggestionBarView: UIView {
         languageButton.frame = CGRect(x: 50, y: 0, width: 44, height: h)
         let right = bounds.width - 4
         // Right side, from the edge inward.
-        let w: CGFloat = 40
-        for (i, b) in [toolsButton, arrowsButton, pasteButton, clipboardButton, calculatorButton, emojiButton].enumerated() {
+        let tools = [toolsButton, arrowsButton, pasteButton, clipboardButton, gifButton, calculatorButton, emojiButton]
+        let w = min(40, (bounds.width - 100) / CGFloat(tools.count))
+        for (i, b) in tools.enumerated() {
             b.frame = CGRect(x: right - w * CGFloat(i + 1), y: 0, width: w, height: h)
         }
 
@@ -146,6 +178,7 @@ final class SuggestionBarView: UIView {
         for (i, b) in suggestionButtons.enumerated() {
             b.frame = CGRect(x: start + CGFloat(i) * width, y: 0, width: width, height: h)
         }
+        toastLabel.frame = CGRect(x: 98, y: 0, width: bounds.width - 102, height: h)
         for (i, d) in dividers.enumerated() {
             d.frame = CGRect(x: start + CGFloat(i + 1) * width, y: h * 0.25, width: 1, height: h * 0.5)
         }
@@ -159,6 +192,7 @@ final class SuggestionBarView: UIView {
     @objc private func languageTapped() { onLanguage?() }
     @objc private func pasteTapped() { onPaste?() }
     @objc private func arrowsTapped() { onArrows?() }
+    @objc private func gifTapped() { onGif?() }
 
     @objc private func suggestionTapped(_ sender: UIButton) {
         guard values.indices.contains(sender.tag) else { return }
