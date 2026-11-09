@@ -29,6 +29,8 @@ targets:
     info:
       path: App/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: ضاد
         CFBundleDevelopmentRegion: ar
         LSRequiresIPhoneOS: true
@@ -61,6 +63,8 @@ targets:
     info:
       path: Keyboard/Info.plist
       properties:
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: ضاد
         NSContactsUsageDescription: ضاد بيستخدم جهات الاتصال عشان تقدر تبحث عن رقم أو إيميل وتكتبه من الكيبورد. البيانات مابتطلعش من تليفونك.
         GiphyAPIKey: $(GIPHY_API_KEY)
