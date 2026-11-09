@@ -5,6 +5,7 @@
 require "openssl"
 require "base64"
 require "json"
+require "time"
 require "net/http"
 require "fileutils"
 
@@ -82,9 +83,32 @@ def setup
   end
 end
 
+# Apple checks the signing certificate while it processes an upload, which can take a while after the
+# upload finishes. Revoking it too early fails the build with "90721 Certificate Revoked", so when
+# WAIT_FOR_BUILD is set, wait until the newest build of the app is no longer processing.
+def wait_for_processing
+  started = Time.now
+  app = api("GET", "/v1/apps?filter[bundleId]=com.daad.keyboard")["data"].first
+  return puts("App not found, not waiting") unless app
+  sleep 60
+  loop do
+    build = api("GET", "/v1/builds?filter[app]=#{app["id"]}&sort=-uploadedDate&limit=1")["data"].first
+    st = build && build["attributes"]["processingState"]
+    fresh = build && Time.parse(build["attributes"]["uploadedDate"]) > started - 20 * 60
+    puts "Newest build #{build && build["attributes"]["version"]}: #{st}#{fresh ? "" : " (older upload, waiting for the new one)"}"
+    break if fresh && st != "PROCESSING"
+    break puts("Stopped waiting after 45 minutes") if Time.now - started > 45 * 60
+    sleep 60
+  end
+rescue => e
+  puts "Could not check processing (#{e}); waiting 20 minutes instead"
+  sleep 20 * 60
+end
+
 def cleanup
   return puts("Nothing to clean up") unless File.exist?(STATE)
   state = JSON.parse(File.read(STATE))
+  wait_for_processing if ENV["WAIT_FOR_BUILD"] == "1"
   (state["profiles"] || {}).each_value do |p|
     api("DELETE", "/v1/profiles/#{p["id"]}") rescue puts("Could not delete profile #{p["name"]}: #{$!}")
   end
