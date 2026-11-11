@@ -33,6 +33,10 @@ final class SuggestionBarView: UIView {
     private var itemButtons: [(BarItem, UIButton)] = []
     private var items: [BarItem] = []
     private var needsScrollToEnd = true
+    /// While typing: the small arrow that swaps the suggestions for the tool buttons and back.
+    private let swapButton = UIButton(type: .system)
+    private var toolsWhileTyping = false
+    private var pending: [Suggestion] = []
     private let toastLabel = UILabel()
     private var toastWork: DispatchWorkItem?
     private var arrowsOn = false
@@ -50,6 +54,9 @@ final class SuggestionBarView: UIView {
         toolScroll.delaysContentTouches = false
         toolScroll.alwaysBounceHorizontal = false
         addSubview(toolScroll)
+        swapButton.addTarget(self, action: #selector(swapTapped), for: .touchUpInside)
+        swapButton.isHidden = true
+        addSubview(swapButton)
         setItems(BarItem.allCases.filter { $0 != .deleteAll && $0 != .copyAll })
         toastLabel.textAlignment = .center
         toastLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
@@ -115,6 +122,7 @@ final class SuggestionBarView: UIView {
         self.theme = theme
         backgroundColor = theme.background
         dismissButton.tintColor = theme.text
+        swapButton.tintColor = theme.secondaryText
         for (item, b) in itemButtons {
             b.tintColor = item == .arrows && arrowsOn ? theme.accent : theme.text
             b.setTitleColor(theme.text, for: .normal)
@@ -152,6 +160,9 @@ final class SuggestionBarView: UIView {
 
     func showTools() {
         showingSuggestions = false
+        toolsWhileTyping = false
+        pending = []
+        swapButton.isHidden = true
         values = []
         toolScroll.isHidden = false
         suggestionButtons.forEach { $0.isHidden = true }
@@ -161,6 +172,20 @@ final class SuggestionBarView: UIView {
     /// Up to 3 suggestions, shown left / middle / right.
     func show(_ suggestions: [Suggestion]) {
         guard !suggestions.isEmpty else { showTools(); return }
+        // New suggestions (a letter was typed) bring the suggestions back after the arrow showed the tools.
+        if toolsWhileTyping && suggestions.map(\.value) != pending.map(\.value) { toolsWhileTyping = false }
+        pending = suggestions
+        swapButton.isHidden = false
+        setSwapIcon()
+        if toolsWhileTyping {
+            showingSuggestions = false
+            values = []
+            toolScroll.isHidden = false
+            suggestionButtons.forEach { $0.isHidden = true }
+            dividers.forEach { $0.isHidden = true }
+            setNeedsLayout()
+            return
+        }
         showingSuggestions = true
         toolScroll.isHidden = true
         values = suggestions.map { $0.value }
@@ -183,8 +208,11 @@ final class SuggestionBarView: UIView {
         let h = bounds.height
         dismissButton.frame = CGRect(x: 4, y: 0, width: 44, height: h)
         languageButton.frame = CGRect(x: 50, y: 0, width: 44, height: h)
+        // The swap arrow (only while typing) takes a small slot at the right end.
+        let swapW: CGFloat = swapButton.isHidden ? 0 : 30
+        swapButton.frame = CGRect(x: bounds.width - 4 - swapW, y: 0, width: swapW, height: h)
         // Tool buttons: right-aligned when they fit, otherwise the strip scrolls sideways.
-        toolScroll.frame = CGRect(x: 96, y: 0, width: max(0, bounds.width - 100), height: h)
+        toolScroll.frame = CGRect(x: 96, y: 0, width: max(0, bounds.width - 100 - swapW), height: h)
         let w: CGFloat = 40
         let total = w * CGFloat(itemButtons.count)
         let lead = max(0, toolScroll.bounds.width - total)
@@ -199,7 +227,7 @@ final class SuggestionBarView: UIView {
         }
 
         let start: CGFloat = 98
-        let width = (bounds.width - start - 4) / 3
+        let width = (bounds.width - start - 4 - swapW) / 3
         for (i, b) in suggestionButtons.enumerated() {
             b.frame = CGRect(x: start + CGFloat(i) * width, y: 0, width: width, height: h)
         }
@@ -211,6 +239,18 @@ final class SuggestionBarView: UIView {
 
     @objc private func dismissTapped() { onDismiss?() }
     @objc private func languageTapped() { onLanguage?() }
+
+    @objc private func swapTapped() {
+        toolsWhileTyping.toggle()
+        show(pending)
+    }
+
+    private func setSwapIcon() {
+        let config = UIImage.SymbolConfiguration(pointSize: 15, weight: .semibold)
+        // ›  = show the tools; ‹ = back to the suggestions.
+        swapButton.setImage(UIImage(systemName: toolsWhileTyping ? "chevron.left" : "chevron.right", withConfiguration: config),
+                            for: .normal)
+    }
 
     @objc private func itemTapped(_ sender: UIButton) {
         guard let item = itemButtons.first(where: { $0.1 === sender })?.0 else { return }
