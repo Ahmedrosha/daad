@@ -113,4 +113,25 @@ final class DaadTests: XCTestCase {
         Access.save(merged, to: defaults)
         XCTAssertEqual(Access.load(from: defaults), merged)
     }
+
+    // MARK: Dual keyboard
+
+    func testDualKeyboardPutsEnglishLettersOnArabicKeys() {
+        var c = context(.arabic)
+        c.dual = true
+        let keys = Layouts.build(c).rows.flatMap(\.keys)
+        func down(_ arabic: String) -> String? {
+            keys.first { $0.action == .character(arabic) }?.downChar
+        }
+        XCTAssertEqual(down("ض"), "q")
+        XCTAssertEqual(down("ح"), "p")
+        XCTAssertEqual(down("ش"), "a")
+        XCTAssertNil(down("ج"))
+        XCTAssertEqual(keys.compactMap(\.downChar).count, 26)
+        // Off by default, and never on the English keyboard.
+        XCTAssertTrue(Layouts.build(context(.arabic)).rows.flatMap(\.keys).allSatisfy { $0.downChar == nil })
+        var e = context(.english)
+        e.dual = true
+        XCTAssertTrue(Layouts.build(e).rows.flatMap(\.keys).allSatisfy { $0.downChar == nil })
+    }
 }

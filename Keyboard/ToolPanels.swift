@@ -334,6 +334,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
         ]),
         ("شكل الكيبورد", "Layout", [
             (.numberRow, "صف الأرقام", "Number row"),
+            (.dualKeyboard, "مزدوج: إنجليزي بالسحب لتحت", "Dual: flick down for English"),
             (.arrowRow, "صف أسهم تحريك المؤشر", "Cursor arrow row"),
             (.swipeUpSymbols, "رموز بالسحب لفوق", "Flick-up symbols"),
             (.harakatOnHold, "التشكيل بالضغط المطوّل", "Harakat on long press"),

@@ -13,6 +13,7 @@ struct LayoutContext: Equatable {
     var arabicLayout: String = "iphone"
     var arrowRow: Bool = false
     var swipeUpSymbols: Bool = true
+    var dual: Bool = false
     var harakatOnHold: Bool = true
     var theme: String = "system"
 }
@@ -59,6 +60,7 @@ enum Layouts {
         }
         if c.mode == .letters && c.swipeUpSymbols { addUpChars(&result.0, c) }
         if c.mode == .letters && c.language == .arabic && c.harakatOnHold { addHarakat(&result.0) }
+        if c.mode == .letters && c.language == .arabic && c.dual { addEnglishLetters(&result.0) }
         if c.arrowRow { result.0.append(arrowRow(maxUnits: result.1)) }
         return (result.0, result.1)
     }
@@ -80,6 +82,24 @@ enum Layouts {
             for k in rows[r].keys.indices {
                 guard case .character(let t) = rows[r].keys[k].action, t.first?.isLetter ?? false else { continue }
                 if i < sets[letterRow].count { rows[r].keys[k].upChar = sets[letterRow][i] }
+                i += 1
+            }
+            letterRow += 1
+        }
+    }
+
+    /// Dual keyboard: each Arabic letter key also carries the English letter in the same place
+    /// (ض = q, ش = a, …), typed by flicking down.
+    private static func addEnglishLetters(_ rows: inout [KeyRow]) {
+        let sets = [Array("qwertyuiop"), Array("asdfghjkl"), Array("zxcvbnm")].map { $0.map(String.init) }
+        var letterRow = 0
+        for r in rows.indices {
+            let isLetterRow = rows[r].keys.contains { if case .character(let t) = $0.action { return t.first?.isLetter ?? false }; return false }
+            guard isLetterRow, letterRow < sets.count else { continue }
+            var i = 0
+            for k in rows[r].keys.indices {
+                guard case .character(let t) = rows[r].keys[k].action, t.first?.isLetter ?? false else { continue }
+                if i < sets[letterRow].count { rows[r].keys[k].downChar = sets[letterRow][i] }
                 i += 1
             }
             letterRow += 1

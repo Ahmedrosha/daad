@@ -51,6 +51,8 @@ struct Key {
     var smallLabel: Bool = false
     /// Typed by flicking up on the key (shown small in the corner).
     var upChar: String? = nil
+    /// Typed by flicking down on the key (dual keyboard: the English letter, shown small top-left).
+    var downChar: String? = nil
 }
 
 struct KeyRow {

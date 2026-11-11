@@ -20,10 +20,11 @@ enum DaadSetting: String, CaseIterable {
     case swipeUpSymbols  // رموز بالسحب لفوق على الحروف
     case harakatOnHold   // التشكيل بالضغط المطوّل
     case splitLandscape  // كيبورد مقسوم في الوضع العرضي
+    case dualKeyboard    // كيبورد مزدوج: حرف إنجليزي بالسحب لتحت على الكيبورد العربي
 
     var defaultValue: Bool {
         switch self {
-        case .rtlMark, .autocorrect, .arrowRow: return false
+        case .rtlMark, .autocorrect, .arrowRow, .dualKeyboard: return false
         default: return true
         }
     }

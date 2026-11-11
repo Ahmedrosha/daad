@@ -79,6 +79,7 @@ final class KeyView: UIView {
     private let label = UILabel()
     private let icon = UIImageView()
     private let hint = UILabel()
+    private let downHint = UILabel()
 
     var isHighlighted = false { didSet { updateColors() } }
 
@@ -114,6 +115,12 @@ final class KeyView: UIView {
             hint.textAlignment = .right
             face.addSubview(hint)
         }
+        if let down = key.downChar {
+            downHint.text = down
+            downHint.font = UIFont.systemFont(ofSize: 11, weight: .medium)
+            downHint.textAlignment = .left
+            face.addSubview(downHint)
+        }
         if let symbol = key.symbol {
             let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
             icon.image = UIImage(systemName: symbol, withConfiguration: config)
@@ -145,6 +152,7 @@ final class KeyView: UIView {
         label.textColor = (key.action == .space) ? theme.secondaryText : textColor
         icon.tintColor = textColor
         hint.textColor = theme.secondaryText
+        downHint.textColor = theme.secondaryText
     }
 
     override func layoutSubviews() {
@@ -152,6 +160,7 @@ final class KeyView: UIView {
         face.frame = bounds.insetBy(dx: 3, dy: 5)
         label.frame = face.bounds.insetBy(dx: 2, dy: 0)
         hint.frame = CGRect(x: 2, y: 1, width: face.bounds.width - 5, height: 12)
+        downHint.frame = CGRect(x: 4, y: 1, width: face.bounds.width - 6, height: 13)
         icon.frame = face.bounds
         if key.smallLabel {
             label.font = UIFont.systemFont(ofSize: 15)

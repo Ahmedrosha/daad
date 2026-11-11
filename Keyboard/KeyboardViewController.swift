@@ -718,6 +718,7 @@ final class KeyboardViewController: UIInputViewController {
             arabicLayout: settings.arabicLayout,
             arrowRow: settings.bool(.arrowRow) && !isSearching,
             swipeUpSymbols: settings.bool(.swipeUpSymbols),
+            dual: settings.bool(.dualKeyboard),
             harakatOnHold: settings.bool(.harakatOnHold),
             theme: settings.keyboardTheme)
         if force || context != currentContext {
@@ -730,6 +731,7 @@ final class KeyboardViewController: UIInputViewController {
             updateHeight()
         }
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
+            && !(language == .arabic && settings.bool(.dualKeyboard))   // a down-flick would read as a glide
         keyboardView.splitWhenWide = settings.bool(.splitLandscape)
         lexicon.blockOffensive = settings.bool(.blockOffensive)
         suggestionBar.setLanguage(language)
@@ -1122,6 +1124,11 @@ final class KeyboardViewController: UIInputViewController {
 
     private func shouldAutoCapitalize() -> Bool {
         guard language == .english, mode == .letters, settings.bool(.autoCapitalize) else { return false }
+        return capitalizationContext()
+    }
+
+    /// Whether the text field expects a capital letter at the cursor (start of a sentence, a word, …).
+    private func capitalizationContext() -> Bool {
         let type = proxy.autocapitalizationType ?? .sentences
         let before = proxy.documentContextBeforeInput ?? ""
         switch type {
@@ -1273,6 +1280,12 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 break
             }
         }
+    }
+
+    /// Dual keyboard: the English letter from flicking down, capitalized at the start of a sentence.
+    func keyboardView(_ view: KeyboardView, insertFlickDown text: String) {
+        let upper = settings.bool(.autoCapitalize) && capitalizationContext()
+        keyboardView(view, insertAlternate: upper ? text.uppercased() : text)
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {

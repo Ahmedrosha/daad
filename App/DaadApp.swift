@@ -151,6 +151,7 @@ struct SettingsView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photoSaved = false
     @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
+    @AppStorage(DaadSetting.dualKeyboard.rawValue, store: SharedSettings.store) private var dualKeyboard = false
     @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
@@ -201,6 +202,12 @@ struct SettingsView: View {
                         Text(t("زي Gboard", "Like Gboard")).tag("gboard")
                     }
                     Toggle(t("صف الأرقام", "Number row"), isOn: $numberRow)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Toggle(t("كيبورد مزدوج (عربي + إنجليزي)", "Dual keyboard (Arabic + English)"), isOn: $dualKeyboard)
+                        Text(t("على الكيبورد العربي: الضغطة حرف عربي، والسحب لتحت على نفس الزرار حرف إنجليزي. الكتابة بالسحب بتتقفل وهو شغال.",
+                               "On the Arabic keyboard: tap for Arabic, flick down on the same key for English. Swipe typing is off while it's on."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     Toggle(t("صف أسهم تحريك المؤشر", "Cursor arrow row"), isOn: $arrowRow)
                     Toggle(t("كيبورد مقسوم في الوضع العرضي", "Split keyboard in landscape"), isOn: $splitLandscape)
                     Toggle(t("رموز وأرقام بالسحب لفوق على الحروف", "Flick up on letters for numbers and symbols"), isOn: $swipeUpSymbols)

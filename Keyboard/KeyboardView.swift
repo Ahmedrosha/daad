@@ -3,6 +3,7 @@ import UIKit
 protocol KeyboardViewDelegate: AnyObject {
     func keyboardView(_ view: KeyboardView, didTap action: KeyAction)
     func keyboardView(_ view: KeyboardView, insertAlternate text: String)
+    func keyboardView(_ view: KeyboardView, insertFlickDown text: String)
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool)
     func keyboardViewSwitchLanguage(_ view: KeyboardView)
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
@@ -218,12 +219,15 @@ final class KeyboardView: UIView {
                 let moved = hypot(p.x - tracker.start.x, p.y - tracker.start.y)
                 // Moving cancels the long-press menu: holding still is a long press, moving is a flick or glide.
                 if tracker.alternates == nil && moved > 10 { tracker.invalidate() }
-                // Show the flick symbol in the bubble while flicking up.
-                if tracker.alternates == nil, !tracker.gliding, let up = tracker.keyView.key.upChar {
-                    let flicking = flickUpChar(tracker, end: p) != nil
-                    if flicking != tracker.showingFlick, delegate?.popupsEnabled ?? true {
-                        tracker.showingFlick = flicking
-                        popup.show(flicking ? up : tracker.keyView.key.label, over: tracker.keyView.faceFrameInParent, in: bounds)
+                // Show the flick character in the bubble while flicking up (symbol) or down (English letter).
+                let key = tracker.keyView.key
+                if tracker.alternates == nil, !tracker.gliding, key.upChar != nil || key.downChar != nil {
+                    let flick = flickChar(tracker, end: p)
+                    if (flick != nil) != tracker.showingFlick || (flick != nil && flick != tracker.flickShown),
+                       delegate?.popupsEnabled ?? true {
+                        tracker.showingFlick = flick != nil
+                        tracker.flickShown = flick
+                        popup.show(flick ?? key.label, over: tracker.keyView.faceFrameInParent, in: bounds)
                     }
                 }
                 if let alt = tracker.alternates {
@@ -372,6 +376,10 @@ final class KeyboardView: UIView {
             return
         }
 
+        if !cancelled, let down = flickDownChar(tracker, end: tracker.lastMovePoint) {
+            delegate?.keyboardView(self, insertFlickDown: down)
+            return
+        }
         if !cancelled, let up = flickUpChar(tracker, end: tracker.lastMovePoint) {
             delegate?.keyboardView(self, insertAlternate: up)
             return
@@ -401,7 +409,19 @@ final class KeyboardView: UIView {
         let dx = abs(p.x - tracker.start.x), dy = tracker.start.y - p.y
         // An upward move is a flick unless it clearly travels on to other keys.
         if tracker.keyView.key.upChar != nil && dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
+        if tracker.keyView.key.downChar != nil && -dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
         return base
+    }
+
+    private func flickChar(_ tracker: TouchTracker, end: CGPoint) -> String? {
+        flickDownChar(tracker, end: end) ?? flickUpChar(tracker, end: end)
+    }
+
+    /// The English letter on a dual-keyboard key, if the finger moved clearly downward.
+    private func flickDownChar(_ tracker: TouchTracker, end: CGPoint) -> String? {
+        guard let down = tracker.keyView.key.downChar else { return nil }
+        let dx = abs(end.x - tracker.start.x), dy = end.y - tracker.start.y
+        return dy > 14 && dy > dx ? down : nil
     }
 
     /// The flick-up symbol, if the finger moved clearly upward and stayed near its key.
@@ -465,6 +485,7 @@ private final class TouchTracker {
     var alternates: AlternatesView?
     var gliding = false
     var showingFlick = false
+    var flickShown: String?
     var path: [CGPoint] = []
 
     init(keyView: KeyView, start: CGPoint) {
