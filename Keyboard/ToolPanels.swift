@@ -334,6 +334,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
         ]),
         ("شكل الكيبورد", "Layout", [
             (.numberRow, "صف الأرقام", "Number row"),
+            (.autoLanguage, "اللغة حسب الكلمة اللي قبل المؤشر", "Language from the word before the cursor"),
             (.dualKeyboard, "مزدوج: إنجليزي بالسحب لتحت", "Dual: flick down for English"),
             (.arrowRow, "صف أسهم تحريك المؤشر", "Cursor arrow row"),
             (.swipeUpSymbols, "رموز بالسحب لفوق", "Flick-up symbols"),

@@ -39,6 +39,8 @@ final class KeyboardView: UIView {
     // Space-bar gesture tuning
     private let holdDelay: TimeInterval = 0.45
     private let cursorStartDistance: CGFloat = 6
+    /// How long after touching the space bar a move still counts as a possible language flick.
+    private let quickFlickWindow: TimeInterval = 0.18
     private let cursorStepWidth: CGFloat = 5
     private let flingSpeed: CGFloat = 1800
     private let cursorLineHeight: CGFloat = 30
@@ -144,6 +146,7 @@ final class KeyboardView: UIView {
             }
 
             let tracker = TouchTracker(keyView: kv, start: p)
+            tracker.startTime = touch.timestamp
             trackers[ObjectIdentifier(touch)] = tracker
             begin(tracker)
         }
@@ -158,7 +161,14 @@ final class KeyboardView: UIView {
                 // After the hold that switches language, a clear move is needed, so a small wobble
                 // doesn't cancel the switch.
                 let needed = tracker.holdFired ? 22 : cursorStartDistance
-                if !tracker.cursorMode && hypot(p.x - tracker.start.x, p.y - tracker.start.y) > needed {
+                tracker.lastMovePoint = p
+                if !tracker.cursorMode && !tracker.holdFired && hypot(p.x - tracker.start.x, p.y - tracker.start.y) > needed
+                    && touch.timestamp - tracker.startTime < quickFlickWindow {
+                    // Too soon to tell: a quick flick that lifts right away switches the language;
+                    // a finger that keeps moving starts moving the cursor once the window passes.
+                    tracker.invalidate()
+                    tracker.flickCandidate = true
+                } else if !tracker.cursorMode && hypot(p.x - tracker.start.x, p.y - tracker.start.y) > needed {
                     tracker.invalidate()
                     tracker.cursorMode = true
                     tracker.holdFired = false
@@ -393,6 +403,8 @@ final class KeyboardView: UIView {
             } else if tracker.holdFired {
                 kv.resetLabel()
                 if !cancelled { delegate?.keyboardViewSwitchLanguage(self) }
+            } else if !cancelled, isQuickLanguageFlick(tracker) {
+                delegate?.keyboardViewSwitchLanguage(self)
             } else if !cancelled {
                 delegate?.keyboardView(self, didTap: .space)
             }
@@ -401,6 +413,14 @@ final class KeyboardView: UIView {
         default:
             if !cancelled { delegate?.keyboardView(self, didTap: kv.key.action) }
         }
+    }
+
+    /// A short, fast sideways flick on the space bar (no hold) switches the language.
+    private func isQuickLanguageFlick(_ tracker: TouchTracker) -> Bool {
+        guard tracker.flickCandidate else { return false }
+        let dx = tracker.lastMovePoint.x - tracker.start.x, dy = tracker.lastMovePoint.y - tracker.start.y
+        let quick = ProcessInfo.processInfo.systemUptime - tracker.startTime < 0.45
+        return quick && abs(dx) > 28 && abs(dx) > abs(dy) * 1.5
     }
 
     /// A mostly-upward move on a key with a flick symbol needs to go further before it counts as glide typing.
@@ -486,6 +506,8 @@ private final class TouchTracker {
     var gliding = false
     var showingFlick = false
     var flickShown: String?
+    var startTime: TimeInterval = 0
+    var flickCandidate = false
     var path: [CGPoint] = []
 
     init(keyView: KeyView, start: CGPoint) {

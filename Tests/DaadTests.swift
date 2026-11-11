@@ -134,4 +134,11 @@ final class DaadTests: XCTestCase {
         e.dual = true
         XCTAssertTrue(Layouts.build(e).rows.flatMap(\.keys).allSatisfy { $0.downChar == nil })
     }
+
+    func testLanguageBeforeCursor() {
+        XCTAssertEqual(KeyboardViewController.languageBefore("ازيك يا Ahmed "), .english)
+        XCTAssertEqual(KeyboardViewController.languageBefore("hello يا صاحبي، "), .arabic)
+        XCTAssertNil(KeyboardViewController.languageBefore("123 !! "))
+        XCTAssertNil(KeyboardViewController.languageBefore(""))
+    }
 }

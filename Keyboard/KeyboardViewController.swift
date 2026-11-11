@@ -229,6 +229,7 @@ final class KeyboardViewController: UIInputViewController {
         if hasFullAccess && settings.consumeClearLearnedRequest() { lexicon.clearLearned() }
         if hasFullAccess { clipboard.captureIfChanged() }
         refreshShortcuts()
+        autoPickLanguage(refresh: false)
         updateAutoShift()
         reload(force: true)   // picks up changes made in the app's Settings screen
         tapHaptic = UIImpactFeedbackGenerator(style: hapticStyle)
@@ -1318,17 +1319,39 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardViewSwitchLanguage(_ view: KeyboardView) {
-        language = language.toggled
-        settings.language = language
-        primaryLanguage = language == .arabic ? "ar" : "en-US"
+        setLanguage(language.toggled)
+    }
+
+    private func setLanguage(_ new: DaadLanguage, refresh: Bool = true) {
+        language = new
+        settings.language = new
+        primaryLanguage = new == .arabic ? "ar" : "en-US"
         mode = .letters
+        guard refresh else { return }
         updateAutoShift()
         reload()
+    }
+
+    /// The language of the last word before the cursor (nil when there is no letter to go by).
+    static func languageBefore(_ text: String) -> DaadLanguage? {
+        for ch in text.reversed().prefix(80) where ch.isLetter {
+            return TextHelpers.isArabic(ch) ? .arabic : .english
+        }
+        return nil
+    }
+
+    /// Picks the keyboard language from the word before the cursor: when the keyboard opens and after
+    /// moving the cursor, never while typing, so it doesn't flip mid-sentence.
+    private func autoPickLanguage(refresh: Bool) {
+        guard settings.bool(.autoLanguage), mode == .letters, !isSearching,
+              let found = Self.languageBefore(proxy.documentContextBeforeInput ?? ""), found != language else { return }
+        setLanguage(found, refresh: refresh)
     }
 
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
         lockedCursorDirection = began ? paragraphIsRightToLeft : nil
         if !began {
+            autoPickLanguage(refresh: false)
             updateAutoShift()
             reload()   // also refreshes the suggestions
         }

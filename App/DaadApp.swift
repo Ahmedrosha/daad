@@ -152,6 +152,7 @@ struct SettingsView: View {
     @State private var photoSaved = false
     @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
     @AppStorage(DaadSetting.dualKeyboard.rawValue, store: SharedSettings.store) private var dualKeyboard = false
+    @AppStorage(DaadSetting.autoLanguage.rawValue, store: SharedSettings.store) private var autoLanguage = true
     @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
     @AppStorage("oneHandedMode", store: SharedSettings.store) private var oneHandedMode = "off"
@@ -202,6 +203,12 @@ struct SettingsView: View {
                         Text(t("زي Gboard", "Like Gboard")).tag("gboard")
                     }
                     Toggle(t("صف الأرقام", "Number row"), isOn: $numberRow)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Toggle(t("اللغة حسب الكلمة اللي قبل المؤشر", "Pick the language from the word before the cursor"), isOn: $autoLanguage)
+                        Text(t("لما الكيبورد يتفتح أو تحرك المؤشر. وتقدر تقلب اللغة بسحبة سريعة يمين أو شمال على المسافة.",
+                               "When the keyboard opens or you move the cursor. You can also switch with a quick flick left or right on the space bar."))
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     VStack(alignment: .leading, spacing: 2) {
                         Toggle(t("كيبورد مزدوج (عربي + إنجليزي)", "Dual keyboard (Arabic + English)"), isOn: $dualKeyboard)
                         Text(t("على الكيبورد العربي: الضغطة حرف عربي، والسحب لتحت على نفس الزرار حرف إنجليزي. الكتابة بالسحب بتتقفل وهو شغال.",
