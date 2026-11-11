@@ -729,7 +729,8 @@ final class KeyboardViewController: UIInputViewController {
             look: KeyLook.current,
             arabicLayout: settings.arabicLayout,
             arrowRow: settings.bool(.arrowRow) && !isSearching,
-            swipeUpSymbols: settings.bool(.swipeUpSymbols),
+            // The both-languages keyboard has its own switch for the flick-up symbols.
+            swipeUpSymbols: settings.bool(.swipeUpSymbols) && (inputMode != .dual || settings.bool(.dualSymbols)),
             dual: inputMode == .dual,
             dualLook: settings.dualLook,
             harakatOnHold: settings.bool(.harakatOnHold),

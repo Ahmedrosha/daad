@@ -20,6 +20,7 @@ enum DaadSetting: String, CaseIterable {
     case swipeUpSymbols  // رموز بالسحب لفوق على الحروف
     case harakatOnHold   // التشكيل بالضغط المطوّل
     case splitLandscape  // كيبورد مقسوم في الوضع العرضي
+    case dualSymbols     // الرموز بالسحب لفوق في كيبورد (ع+En)
     case autoLanguage    // يختار اللغة حسب الكلمة اللي قبل المؤشر
 
     var defaultValue: Bool {

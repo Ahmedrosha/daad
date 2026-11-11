@@ -153,6 +153,7 @@ struct SettingsView: View {
     @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
     @State private var enabledModes = SharedSettings.shared.enabledModes
     @State private var dualLook = SharedSettings.shared.dualLook
+    @AppStorage(DaadSetting.dualSymbols.rawValue, store: SharedSettings.store) private var dualSymbols = true
     @AppStorage(DaadSetting.autoLanguage.rawValue, store: SharedSettings.store) private var autoLanguage = true
     @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
@@ -234,6 +235,7 @@ struct SettingsView: View {
                             Text(t("الاتنين في الكورنرات · الضغطة إنجليزي", "Both in corners · tap = English")).tag(DualLook.corners)
                         }
                         .onChange(of: dualLook) { SharedSettings.shared.dualLook = $0 }
+                        Toggle(t("الرموز الصغيرة في (ع+En)", "Small symbols on (ع+En)"), isOn: $dualSymbols)
                     }
                 } header: {
                     Text(t("الكيبوردات اللي بتقلب بينهم", "Keyboards you switch between"))
