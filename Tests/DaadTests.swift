@@ -166,4 +166,13 @@ final class DaadTests: XCTestCase {
             XCTAssertNotNil(keys.first { $0.action == .character("ج") })   // no English letter: stays Arabic
         }
     }
+
+    func testDualKeyboardHasShift() {
+        var c = context(.arabic)
+        c.dual = true
+        XCTAssertTrue(Layouts.build(c).rows.flatMap(\.keys).contains { $0.action == .shift })
+        XCTAssertFalse(Layouts.build(context(.arabic)).rows.flatMap(\.keys).contains { $0.action == .shift })
+        c.shift = .on
+        XCTAssertEqual(Layouts.build(c).rows.flatMap(\.keys).first { $0.action == .character("ض") }?.downChar, "Q")
+    }
 }

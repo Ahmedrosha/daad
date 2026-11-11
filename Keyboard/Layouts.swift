@@ -61,7 +61,7 @@ enum Layouts {
         }
         if c.mode == .letters && c.swipeUpSymbols { addUpChars(&result.0, c) }
         if c.mode == .letters && c.language == .arabic && c.harakatOnHold { addHarakat(&result.0) }
-        if c.mode == .letters && c.language == .arabic && c.dual { addEnglishLetters(&result.0, look: c.dualLook) }
+        if c.mode == .letters && c.language == .arabic && c.dual { addEnglishLetters(&result.0, look: c.dualLook, upper: c.shift != .off) }
         if c.arrowRow { result.0.append(arrowRow(maxUnits: result.1)) }
         return (result.0, result.1)
     }
@@ -91,7 +91,7 @@ enum Layouts {
 
     /// Dual keyboard: each Arabic letter key also carries the English letter in the same place
     /// (ض = q, ش = a, …), typed by flicking down.
-    private static func addEnglishLetters(_ rows: inout [KeyRow], look: DualLook) {
+    private static func addEnglishLetters(_ rows: inout [KeyRow], look: DualLook, upper: Bool) {
         let sets = [Array("qwertyuiop"), Array("asdfghjkl"), Array("zxcvbnm")].map { $0.map(String.init) }
         var letterRow = 0
         for r in rows.indices {
@@ -101,7 +101,7 @@ enum Layouts {
             for k in rows[r].keys.indices {
                 guard case .character(let t) = rows[r].keys[k].action, t.first?.isLetter ?? false else { continue }
                 if i < sets[letterRow].count {
-                    let english = sets[letterRow][i]
+                    let english = upper ? sets[letterRow][i].uppercased() : sets[letterRow][i]
                     rows[r].keys[k].dualLook = look
                     if look.tapsEnglish {
                         // Tap types the English letter; the Arabic one moves to flick-down.
@@ -142,7 +142,7 @@ enum Layouts {
     // MARK: Letters
 
     private static func arabicLetters(_ c: LayoutContext) -> ([KeyRow], CGFloat) {
-        let max: CGFloat = 11.6   // 11 letters per row + room for a wider delete key
+        var max: CGFloat = 11.6   // 11 letters per row + room for a wider delete key
         var rows: [KeyRow] = []
         if c.showNumberRow { rows.append(numberRow(c, maxUnits: max)) }
         let r1 = ["ض", "ص", "ث", "ق", "ف", "غ", "ع", "ه", "خ", "ح", "ج"]
@@ -159,7 +159,15 @@ enum Layouts {
         rows.append(KeyRow(keys: chars(r1, alternates: arabicAlternates), rightToLeft: false))
         rows.append(KeyRow(keys: chars(r2, alternates: arabicAlternates), rightToLeft: false))
         // Standard Arabic layout: ض on the far left (where Q is), delete on the far right.
-        rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1.6, arabic: true)], rightToLeft: false))
+        if c.dual {
+            // Both-languages keyboard: Shift on the left for the English letters, like the English keyboard.
+            let shiftW: CGFloat = 1.25, deleteW: CGFloat = 1.35
+            max = Swift.max(max, CGFloat(r3.count) + shiftW + deleteW)
+            rows.append(KeyRow(keys: [shiftKey(c, width: shiftW)] + chars(r3, alternates: arabicAlternates)
+                                   + [backspace(width: deleteW, arabic: true)], rightToLeft: false))
+        } else {
+            rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1.6, arabic: true)], rightToLeft: false))
+        }
         let comma = Key(action: .character("،"), label: "،", alternates: harakat + ["؛"])
         let period = Key(action: .character("."), label: ".", alternates: ["؟", "!", "،", ":", "\"", "-", "'"])
         rows.append(bottomRow(c, maxUnits: max,
@@ -178,20 +186,22 @@ enum Layouts {
         let r3 = ["z", "x", "c", "v", "b", "n", "m"]
         rows.append(KeyRow(keys: chars(r1, alternates: englishAlternates, upper: upper), rightToLeft: false))
         rows.append(KeyRow(keys: chars(r2, alternates: englishAlternates, upper: upper), rightToLeft: false))
-        let shiftSymbol: String
-        switch c.shift {
-        case .off: shiftSymbol = "shift"
-        case .on: shiftSymbol = "shift.fill"
-        case .locked: shiftSymbol = "capslock.fill"
-        }
-        let shift = Key(action: .shift, label: "", symbol: shiftSymbol, width: 1.5,
-                        style: c.shift == .off ? .special : .normal)
-        rows.append(KeyRow(keys: [shift] + chars(r3, alternates: englishAlternates, upper: upper) + [backspace(width: 1.5, arabic: false)],
+        rows.append(KeyRow(keys: [shiftKey(c, width: 1.5)] + chars(r3, alternates: englishAlternates, upper: upper) + [backspace(width: 1.5, arabic: false)],
                            rightToLeft: false))
         let comma = Key(action: .character(","), label: ",", alternates: [";", ":", "'", "\""])
         let period = Key(action: .character("."), label: ".", alternates: ["?", "!", ",", "'", "\"", "-", ":"])
         rows.append(bottomRow(c, maxUnits: max, modeKey: modeKey("123", to: .symbols1), left: comma, right: period))
         return (rows, max)
+    }
+
+    private static func shiftKey(_ c: LayoutContext, width: CGFloat) -> Key {
+        let symbol: String
+        switch c.shift {
+        case .off: symbol = "shift"
+        case .on: symbol = "shift.fill"
+        case .locked: symbol = "capslock.fill"
+        }
+        return Key(action: .shift, label: "", symbol: symbol, width: width, style: c.shift == .off ? .special : .normal)
     }
 
     private static func numberRow(_ c: LayoutContext, maxUnits: CGFloat) -> KeyRow {
