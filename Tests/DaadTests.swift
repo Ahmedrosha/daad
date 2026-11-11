@@ -153,4 +153,17 @@ final class DaadTests: XCTestCase {
         XCTAssertEqual(InputMode.arabic.step(true, enabled: [.arabic]), .arabic)
         XCTAssertEqual(InputMode.dual.language, .arabic)
     }
+
+    func testDualLookSwapsTapLetter() {
+        for look in [DualLook.englishBig, .corners] {
+            var c = context(.arabic)
+            c.dual = true
+            c.dualLook = look
+            let keys = Layouts.build(c).rows.flatMap(\.keys)
+            let q = keys.first { $0.action == .character("q") }
+            XCTAssertEqual(q?.downChar, "ض")
+            XCTAssertEqual(q?.dualLook, look)
+            XCTAssertNotNil(keys.first { $0.action == .character("ج") })   // no English letter: stays Arabic
+        }
+    }
 }

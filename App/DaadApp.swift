@@ -152,6 +152,7 @@ struct SettingsView: View {
     @State private var photoSaved = false
     @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
     @State private var enabledModes = SharedSettings.shared.enabledModes
+    @State private var dualLook = SharedSettings.shared.dualLook
     @AppStorage(DaadSetting.autoLanguage.rawValue, store: SharedSettings.store) private var autoLanguage = true
     @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
@@ -219,12 +220,20 @@ struct SettingsView: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(modeTitle(mode))
                                 if mode == .dual {
-                                    Text(t("حروف عربي بالضغط، وإنجليزي بالسحب لتحت على نفس الزرار. الكتابة بالسحب مقفولة فيه.",
-                                           "Tap for Arabic, flick down on the same key for English. Swipe typing is off in it."))
+                                    Text(t("كل زرار عليه حرف عربي وحرف إنجليزي: الضغطة تكتب واحد، والسحب لتحت يكتب التاني. الكتابة بالسحب مقفولة فيه.",
+                                           "Each key has an Arabic and an English letter: tap for one, flick down for the other. Swipe typing is off in it."))
                                         .font(.caption).foregroundStyle(.secondary)
                                 }
                             }
                         }
+                    }
+                    if enabledModes.contains(.dual) {
+                        Picker(t("شكل الحروف في (ع+En)", "Letters on (ع+En)"), selection: $dualLook) {
+                            Text(t("عربي كبير · الضغطة عربي", "Arabic big · tap = Arabic")).tag(DualLook.arabicBig)
+                            Text(t("إنجليزي كبير · الضغطة إنجليزي", "English big · tap = English")).tag(DualLook.englishBig)
+                            Text(t("الاتنين في الكورنرات · الضغطة إنجليزي", "Both in corners · tap = English")).tag(DualLook.corners)
+                        }
+                        .onChange(of: dualLook) { SharedSettings.shared.dualLook = $0 }
                     }
                 } header: {
                     Text(t("الكيبوردات اللي بتقلب بينهم", "Keyboards you switch between"))

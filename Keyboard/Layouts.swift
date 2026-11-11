@@ -14,6 +14,7 @@ struct LayoutContext: Equatable {
     var arrowRow: Bool = false
     var swipeUpSymbols: Bool = true
     var dual: Bool = false
+    var dualLook: DualLook = .arabicBig
     var harakatOnHold: Bool = true
     var theme: String = "system"
 }
@@ -60,7 +61,7 @@ enum Layouts {
         }
         if c.mode == .letters && c.swipeUpSymbols { addUpChars(&result.0, c) }
         if c.mode == .letters && c.language == .arabic && c.harakatOnHold { addHarakat(&result.0) }
-        if c.mode == .letters && c.language == .arabic && c.dual { addEnglishLetters(&result.0) }
+        if c.mode == .letters && c.language == .arabic && c.dual { addEnglishLetters(&result.0, look: c.dualLook) }
         if c.arrowRow { result.0.append(arrowRow(maxUnits: result.1)) }
         return (result.0, result.1)
     }
@@ -90,7 +91,7 @@ enum Layouts {
 
     /// Dual keyboard: each Arabic letter key also carries the English letter in the same place
     /// (ض = q, ش = a, …), typed by flicking down.
-    private static func addEnglishLetters(_ rows: inout [KeyRow]) {
+    private static func addEnglishLetters(_ rows: inout [KeyRow], look: DualLook) {
         let sets = [Array("qwertyuiop"), Array("asdfghjkl"), Array("zxcvbnm")].map { $0.map(String.init) }
         var letterRow = 0
         for r in rows.indices {
@@ -99,7 +100,19 @@ enum Layouts {
             var i = 0
             for k in rows[r].keys.indices {
                 guard case .character(let t) = rows[r].keys[k].action, t.first?.isLetter ?? false else { continue }
-                if i < sets[letterRow].count { rows[r].keys[k].downChar = sets[letterRow][i] }
+                if i < sets[letterRow].count {
+                    let english = sets[letterRow][i]
+                    rows[r].keys[k].dualLook = look
+                    if look.tapsEnglish {
+                        // Tap types the English letter; the Arabic one moves to flick-down.
+                        rows[r].keys[k].downChar = t
+                        rows[r].keys[k].action = .character(english)
+                        rows[r].keys[k].label = english
+                        rows[r].keys[k].alternates = []
+                    } else {
+                        rows[r].keys[k].downChar = english
+                    }
+                }
                 i += 1
             }
             letterRow += 1

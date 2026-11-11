@@ -731,6 +731,7 @@ final class KeyboardViewController: UIInputViewController {
             arrowRow: settings.bool(.arrowRow) && !isSearching,
             swipeUpSymbols: settings.bool(.swipeUpSymbols),
             dual: inputMode == .dual,
+            dualLook: settings.dualLook,
             harakatOnHold: settings.bool(.harakatOnHold),
             theme: settings.keyboardTheme)
         if force || context != currentContext {
@@ -1311,7 +1312,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
             if isSearching && handleSearchKey(action) { return }
             switch action {
             case .character(let text):
-                insert(text)
+                insert(dualCapitalized(text))
             case .space:
                 handleSpace()
             case .returnKey:
@@ -1352,10 +1353,17 @@ extension KeyboardViewController: KeyboardViewDelegate {
         }
     }
 
-    /// Dual keyboard: the English letter from flicking down, capitalized at the start of a sentence.
+    /// Dual keyboard: the letter from flicking down (English capitalized at the start of a sentence).
     func keyboardView(_ view: KeyboardView, insertFlickDown text: String) {
-        let upper = settings.bool(.autoCapitalize) && capitalizationContext()
-        keyboardView(view, insertAlternate: upper ? text.uppercased() : text)
+        keyboardView(view, insertAlternate: dualCapitalized(text))
+    }
+
+    /// On the both-languages keyboard there's no Shift: an English letter is capitalized where a
+    /// sentence starts.
+    private func dualCapitalized(_ text: String) -> String {
+        guard inputMode == .dual, text.count == 1, let c = text.first, c.isASCII, c.isLowercase,
+              settings.bool(.autoCapitalize), capitalizationContext() else { return text }
+        return text.uppercased()
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {

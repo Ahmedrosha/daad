@@ -162,6 +162,11 @@ final class KeyView: UIView {
         hint.frame = CGRect(x: 2, y: 1, width: face.bounds.width - 5, height: 12)
         downHint.frame = CGRect(x: 4, y: 1, width: face.bounds.width - 6, height: 13)
         icon.frame = face.bounds
+        if let dual = key.dualLook {
+            layoutDualFrames(dual, label: label, down: downHint)
+            face.layer.shadowPath = UIBezierPath(roundedRect: face.bounds, cornerRadius: 6).cgPath
+            return
+        }
         if key.smallLabel {
             label.font = UIFont.systemFont(ofSize: 15)
         } else if let first = key.label.first, first.isNumber {
@@ -172,6 +177,43 @@ final class KeyView: UIView {
             label.font = look.font.font(size: min(24, face.bounds.height * 0.55) * look.letterScale)
         }
         face.layer.shadowPath = UIBezierPath(roundedRect: face.bounds, cornerRadius: 6).cgPath
+    }
+}
+
+extension KeyView {
+    /// Both-languages keyboard: the tap letter a little off-center toward its corner, the flick-down
+    /// letter in the opposite corner, big enough to read (or both the same size in the corners).
+    fileprivate func layoutDualFrames(_ dual: DualLook, label: UILabel, down: UILabel) {
+        let b = face.bounds, w = b.width, h = b.height
+        let big = min(24, h * 0.55) * look.letterScale
+        func font(_ size: CGFloat, for text: String?) -> UIFont {
+            look.font.font(size: (text?.first).map(TextHelpers.isArabic) == true ? size * 1.08 : size)
+        }
+        down.textColor = dual == .corners ? theme.text : theme.text.withAlphaComponent(0.7)
+        switch dual {
+        case .arabicBig:
+            label.frame = CGRect(x: w * 0.14, y: h * 0.12, width: w * 0.86, height: h * 0.88)
+            label.font = font(big * 0.95, for: label.text)
+            label.textAlignment = .center
+            down.frame = CGRect(x: 3, y: 1, width: w * 0.6, height: h * 0.42)
+            down.font = font(max(13, big * 0.6), for: down.text)
+            down.textAlignment = .left
+        case .englishBig:
+            label.frame = CGRect(x: 0, y: 0, width: w * 0.86, height: h * 0.86)
+            label.font = font(big * 0.95, for: label.text)
+            label.textAlignment = .center
+            down.frame = CGRect(x: w * 0.4, y: h * 0.55, width: w * 0.6 - 3, height: h * 0.45 - 1)
+            down.font = font(max(13, big * 0.6), for: down.text)
+            down.textAlignment = .right
+        case .corners:
+            let size = max(14, big * 0.72)
+            label.frame = CGRect(x: 3, y: 1, width: w * 0.7, height: h * 0.5)
+            label.font = font(size, for: label.text)
+            label.textAlignment = .left
+            down.frame = CGRect(x: w * 0.3, y: h * 0.48, width: w * 0.7 - 3, height: h * 0.52 - 1)
+            down.font = font(size, for: down.text)
+            down.textAlignment = .right
+        }
     }
 }
 

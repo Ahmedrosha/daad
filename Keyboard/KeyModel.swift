@@ -53,6 +53,8 @@ struct Key {
     var upChar: String? = nil
     /// Typed by flicking down on the key (dual keyboard: the English letter, shown small top-left).
     var downChar: String? = nil
+    /// Both-languages keyboard: how the two letters are placed on the key (nil on other keyboards).
+    var dualLook: DualLook? = nil
 }
 
 struct KeyRow {

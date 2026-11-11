@@ -72,6 +72,19 @@ enum InputMode: String, CaseIterable {
     }
 }
 
+/// How the two letters sit on a key of the both-languages keyboard.
+enum DualLook: String, CaseIterable {
+    /// Arabic big (tap), English smaller in the top-left (flick down).
+    case arabicBig = "a"
+    /// English big (tap), Arabic smaller in the bottom-right (flick down).
+    case englishBig = "b"
+    /// Same size in the corners: English top-left (tap), Arabic bottom-right (flick down).
+    case corners = "c"
+
+    /// Whether a tap types the English letter.
+    var tapsEnglish: Bool { self != .arabicBig }
+}
+
 /// Buttons in the bar above the keys (besides hide and language, which stay put on the left).
 enum BarItem: String, CaseIterable {
     case emoji, calculator, gif, clipboard, paste, arrows, copyAll, deleteAll, tools
@@ -139,6 +152,7 @@ final class SharedSettings {
         static let language = "language"
         static let inputMode = "inputMode"
         static let barOrder = "barItemOrder"
+        static let dualLook = "dualLook"
         static let barHidden = "barItemsHidden"
         static let enabledModes = "enabledInputModes"
         static let clearLearned = "clearLearnedRequested"
@@ -281,6 +295,11 @@ final class SharedSettings {
     var language: DaadLanguage {
         get { DaadLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .arabic }
         set { defaults.set(newValue.rawValue, forKey: Keys.language) }
+    }
+
+    var dualLook: DualLook {
+        get { DualLook(rawValue: defaults.string(forKey: Keys.dualLook) ?? "") ?? .arabicBig }
+        set { defaults.set(newValue.rawValue, forKey: Keys.dualLook) }
     }
 
     /// Every bar button in the user's order (new buttons from updates go at the end).
