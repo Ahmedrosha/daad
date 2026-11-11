@@ -116,8 +116,10 @@ final class SuggestionBarView: UIView {
     }
 
     /// Shows the language the button switches to.
-    func setLanguage(_ language: DaadLanguage) {
-        languageButton.setTitle(language == .arabic ? "En" : "ع", for: .normal)
+    /// Shows which keyboard is on now: ع, En or ع+En.
+    func setInputMode(_ mode: InputMode) {
+        languageButton.titleLabel?.font = UIFont.systemFont(ofSize: mode == .dual ? 13 : 18, weight: .medium)
+        languageButton.setTitle(mode.shortLabel, for: .normal)
     }
 
     func showTools() {

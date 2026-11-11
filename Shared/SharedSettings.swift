@@ -21,11 +21,10 @@ enum DaadSetting: String, CaseIterable {
     case harakatOnHold   // التشكيل بالضغط المطوّل
     case splitLandscape  // كيبورد مقسوم في الوضع العرضي
     case autoLanguage    // يختار اللغة حسب الكلمة اللي قبل المؤشر
-    case dualKeyboard    // كيبورد مزدوج: حرف إنجليزي بالسحب لتحت على الكيبورد العربي
 
     var defaultValue: Bool {
         switch self {
-        case .rtlMark, .autocorrect, .arrowRow, .dualKeyboard: return false
+        case .rtlMark, .autocorrect, .arrowRow: return false
         default: return true
         }
     }
@@ -37,6 +36,40 @@ enum DaadLanguage: String {
 
     var toggled: DaadLanguage { self == .arabic ? .english : .arabic }
     var displayName: String { self == .arabic ? "العربية" : "English" }
+}
+
+/// The keyboards you switch between: Arabic, English, or both at once (Arabic keys, English by flicking down).
+enum InputMode: String, CaseIterable {
+    case arabic = "ar"
+    case english = "en"
+    case dual = "dual"
+
+    /// The language the keys are laid out in.
+    var language: DaadLanguage { self == .english ? .english : .arabic }
+
+    /// Label on the language button in the bar.
+    var shortLabel: String {
+        switch self {
+        case .arabic: return "ع"
+        case .english: return "En"
+        case .dual: return "ع+En"
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .arabic: return "العربية"
+        case .english: return "English"
+        case .dual: return "العربية + English"
+        }
+    }
+
+    /// The next (or previous) mode among the enabled ones, in the order Arabic → English → both.
+    func step(_ forward: Bool, enabled: [InputMode]) -> InputMode {
+        let order = InputMode.allCases.filter { enabled.contains($0) || $0 == self }
+        guard let i = order.firstIndex(of: self), order.count > 1 else { return self }
+        return order[(i + (forward ? 1 : order.count - 1)) % order.count]
+    }
 }
 
 /// Settings shared between the app and the keyboard through the App Group.
@@ -57,6 +90,8 @@ final class SharedSettings {
 
     private enum Keys {
         static let language = "language"
+        static let inputMode = "inputMode"
+        static let enabledModes = "enabledInputModes"
         static let clearLearned = "clearLearnedRequested"
         static let shortcuts = "textShortcuts"
         static let shortcutsSeeded = "textShortcutsSeeded"
@@ -197,5 +232,24 @@ final class SharedSettings {
     var language: DaadLanguage {
         get { DaadLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .arabic }
         set { defaults.set(newValue.rawValue, forKey: Keys.language) }
+    }
+
+    /// The keyboard last used: Arabic, English or both.
+    var inputMode: InputMode {
+        get { InputMode(rawValue: defaults.string(forKey: Keys.inputMode) ?? "") ?? (language == .english ? .english : .arabic) }
+        set {
+            defaults.set(newValue.rawValue, forKey: Keys.inputMode)
+            language = newValue.language
+        }
+    }
+
+    /// Keyboards included when switching (all three unless the user turned some off; never empty).
+    var enabledModes: [InputMode] {
+        get {
+            let saved = (defaults.stringArray(forKey: Keys.enabledModes) ?? InputMode.allCases.map(\.rawValue))
+                .compactMap(InputMode.init(rawValue:))
+            return saved.isEmpty ? [.arabic] : InputMode.allCases.filter(saved.contains)
+        }
+        set { defaults.set(newValue.map(\.rawValue), forKey: Keys.enabledModes) }
     }
 }

@@ -41,6 +41,8 @@ final class KeyboardViewController: UIInputViewController {
     private var topHeight: CGFloat { isSearching ? searchHeight : (panel == .look ? lookHeight : barHeight) }
 
     private var language: DaadLanguage = .arabic
+    /// Arabic, English, or both (Arabic keys with English letters by flicking down).
+    private var inputMode: InputMode = .arabic
     private var mode: KeyboardMode = .letters
     private var shift: ShiftState = .off
     private var lastShiftTap: Date?
@@ -102,7 +104,9 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        language = settings.language
+        inputMode = settings.inputMode
+        if !settings.enabledModes.contains(inputMode) { inputMode = settings.enabledModes[0] }
+        language = inputMode.language
         // Tells the app which language is being typed, so it lays the text out the right way.
         primaryLanguage = language == .arabic ? "ar" : "en-US"
         lexicon.configure(store: store)
@@ -327,7 +331,7 @@ final class KeyboardViewController: UIInputViewController {
         }
         suggestionBar.onLanguage = { [weak self] in
             guard let self else { return }
-            self.keyboardViewSwitchLanguage(self.keyboardView)
+            self.keyboardViewSwitchLanguage(self.keyboardView, forward: true)
         }
         lookPanel.onClose = { [weak self] in self?.showPanel(.keys) }
         editPanel.onClose = { [weak self] in self?.showPanel(.keys) }
@@ -719,7 +723,7 @@ final class KeyboardViewController: UIInputViewController {
             arabicLayout: settings.arabicLayout,
             arrowRow: settings.bool(.arrowRow) && !isSearching,
             swipeUpSymbols: settings.bool(.swipeUpSymbols),
-            dual: settings.bool(.dualKeyboard),
+            dual: inputMode == .dual,
             harakatOnHold: settings.bool(.harakatOnHold),
             theme: settings.keyboardTheme)
         if force || context != currentContext {
@@ -732,10 +736,10 @@ final class KeyboardViewController: UIInputViewController {
             updateHeight()
         }
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
-            && !(language == .arabic && settings.bool(.dualKeyboard))   // a down-flick would read as a glide
+            && inputMode != .dual   // a down-flick would read as a glide
         keyboardView.splitWhenWide = settings.bool(.splitLandscape)
         lexicon.blockOffensive = settings.bool(.blockOffensive)
-        suggestionBar.setLanguage(language)
+        suggestionBar.setInputMode(inputMode)
         suggestionBar.setArrowsOn(settings.bool(.arrowRow))
         updateSuggestions()
     }
@@ -1234,7 +1238,7 @@ final class KeyboardViewController: UIInputViewController {
 // MARK: - KeyboardViewDelegate
 
 extension KeyboardViewController: KeyboardViewDelegate {
-    var nextLanguageName: String { language.toggled.displayName }
+    var nextLanguageName: String { inputMode.step(true, enabled: settings.enabledModes).displayName }
     var popupsEnabled: Bool { settings.bool(.keyPopups) }
 
     func keyboardView(_ view: KeyboardView, didTap action: KeyAction) {
@@ -1318,14 +1322,15 @@ extension KeyboardViewController: KeyboardViewDelegate {
         }
     }
 
-    func keyboardViewSwitchLanguage(_ view: KeyboardView) {
-        setLanguage(language.toggled)
+    func keyboardViewSwitchLanguage(_ view: KeyboardView, forward: Bool) {
+        setInputMode(inputMode.step(forward, enabled: settings.enabledModes))
     }
 
-    private func setLanguage(_ new: DaadLanguage, refresh: Bool = true) {
-        language = new
-        settings.language = new
-        primaryLanguage = new == .arabic ? "ar" : "en-US"
+    private func setInputMode(_ new: InputMode, refresh: Bool = true) {
+        inputMode = new
+        language = new.language
+        settings.inputMode = new
+        primaryLanguage = language == .arabic ? "ar" : "en-US"
         mode = .letters
         guard refresh else { return }
         updateAutoShift()
@@ -1343,9 +1348,12 @@ extension KeyboardViewController: KeyboardViewDelegate {
     /// Picks the keyboard language from the word before the cursor: when the keyboard opens and after
     /// moving the cursor, never while typing, so it doesn't flip mid-sentence.
     private func autoPickLanguage(refresh: Bool) {
-        guard settings.bool(.autoLanguage), mode == .letters, !isSearching,
+        // "Both" already types either language, so it stays put.
+        guard settings.bool(.autoLanguage), mode == .letters, !isSearching, inputMode != .dual,
               let found = Self.languageBefore(proxy.documentContextBeforeInput ?? ""), found != language else { return }
-        setLanguage(found, refresh: refresh)
+        let target: InputMode = found == .arabic ? .arabic : .english
+        guard settings.enabledModes.contains(target) else { return }
+        setInputMode(target, refresh: refresh)
     }
 
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {

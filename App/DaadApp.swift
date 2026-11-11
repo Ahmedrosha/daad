@@ -151,7 +151,7 @@ struct SettingsView: View {
     @State private var photoItem: PhotosPickerItem?
     @State private var photoSaved = false
     @AppStorage(DaadSetting.swipeUpSymbols.rawValue, store: SharedSettings.store) private var swipeUpSymbols = true
-    @AppStorage(DaadSetting.dualKeyboard.rawValue, store: SharedSettings.store) private var dualKeyboard = false
+    @State private var enabledModes = SharedSettings.shared.enabledModes
     @AppStorage(DaadSetting.autoLanguage.rawValue, store: SharedSettings.store) private var autoLanguage = true
     @AppStorage(DaadSetting.harakatOnHold.rawValue, store: SharedSettings.store) private var harakatOnHold = true
     @AppStorage(DaadSetting.arabicDigits.rawValue, store: SharedSettings.store) private var arabicDigits = true
@@ -173,6 +173,14 @@ struct SettingsView: View {
     @State private var cleared = false
 
     private func t(_ arabic: String, _ english: String) -> String { ar ? arabic : english }
+
+    private func modeTitle(_ mode: InputMode) -> String {
+        switch mode {
+        case .arabic: return t("عربي", "Arabic")
+        case .english: return t("إنجليزي", "English")
+        case .dual: return t("الاتنين مع بعض (ع+En)", "Both together (ع+En)")
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -197,6 +205,34 @@ struct SettingsView: View {
                     Toggle(t("حرف كابيتال أول الجملة (English)", "Auto-capitalize (English)"), isOn: $autoCapitalize)
                 }
 
+                Section {
+                    ForEach(InputMode.allCases, id: \.self) { mode in
+                        Toggle(isOn: Binding(
+                            get: { enabledModes.contains(mode) },
+                            set: { on in
+                                var list = enabledModes.filter { $0 != mode }
+                                if on { list.append(mode) }
+                                guard !list.isEmpty else { return }   // keep at least one
+                                enabledModes = InputMode.allCases.filter(list.contains)
+                                SharedSettings.shared.enabledModes = enabledModes
+                            })) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(modeTitle(mode))
+                                if mode == .dual {
+                                    Text(t("حروف عربي بالضغط، وإنجليزي بالسحب لتحت على نفس الزرار. الكتابة بالسحب مقفولة فيه.",
+                                           "Tap for Arabic, flick down on the same key for English. Swipe typing is off in it."))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
+                    }
+                } header: {
+                    Text(t("الكيبوردات اللي بتقلب بينهم", "Keyboards you switch between"))
+                } footer: {
+                    Text(t("اقلب بزرار اللغة فوق، أو اضغط مطوّل على المسافة، أو اسحب سحبة سريعة على المسافة: يمين للّي بعده وشمال للّي قبله.",
+                           "Switch with the language button, a long press on the space bar, or a quick flick on it: right for the next, left for the previous."))
+                }
+
                 Section(t("شكل الكيبورد", "Layout")) {
                     Picker(t("ترتيب الحروف العربي", "Arabic letter layout"), selection: $arabicLayout) {
                         Text(t("زي الآيفون", "Like iPhone")).tag("iphone")
@@ -207,12 +243,6 @@ struct SettingsView: View {
                         Toggle(t("اللغة حسب الكلمة اللي قبل المؤشر", "Pick the language from the word before the cursor"), isOn: $autoLanguage)
                         Text(t("لما الكيبورد يتفتح أو تحرك المؤشر. وتقدر تقلب اللغة بسحبة سريعة يمين أو شمال على المسافة.",
                                "When the keyboard opens or you move the cursor. You can also switch with a quick flick left or right on the space bar."))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Toggle(t("كيبورد مزدوج (عربي + إنجليزي)", "Dual keyboard (Arabic + English)"), isOn: $dualKeyboard)
-                        Text(t("على الكيبورد العربي: الضغطة حرف عربي، والسحب لتحت على نفس الزرار حرف إنجليزي. الكتابة بالسحب بتتقفل وهو شغال.",
-                               "On the Arabic keyboard: tap for Arabic, flick down on the same key for English. Swipe typing is off while it's on."))
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Toggle(t("صف أسهم تحريك المؤشر", "Cursor arrow row"), isOn: $arrowRow)

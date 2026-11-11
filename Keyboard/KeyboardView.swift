@@ -5,7 +5,7 @@ protocol KeyboardViewDelegate: AnyObject {
     func keyboardView(_ view: KeyboardView, insertAlternate text: String)
     func keyboardView(_ view: KeyboardView, insertFlickDown text: String)
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool)
-    func keyboardViewSwitchLanguage(_ view: KeyboardView)
+    func keyboardViewSwitchLanguage(_ view: KeyboardView, forward: Bool)
     func keyboardView(_ view: KeyboardView, moveCursorBy steps: Int)
     func keyboardView(_ view: KeyboardView, moveCursorLines lines: Int)
     func keyboardView(_ view: KeyboardView, moveCursorToLineEdge right: Bool)
@@ -402,9 +402,10 @@ final class KeyboardView: UIView {
                 delegate?.keyboardViewCursorGesture(self, began: false)
             } else if tracker.holdFired {
                 kv.resetLabel()
-                if !cancelled { delegate?.keyboardViewSwitchLanguage(self) }
+                if !cancelled { delegate?.keyboardViewSwitchLanguage(self, forward: true) }
             } else if !cancelled, isQuickLanguageFlick(tracker) {
-                delegate?.keyboardViewSwitchLanguage(self)
+                // Flick right for the next keyboard, left for the previous one.
+                delegate?.keyboardViewSwitchLanguage(self, forward: tracker.lastMovePoint.x > tracker.start.x)
             } else if !cancelled {
                 delegate?.keyboardView(self, didTap: .space)
             }

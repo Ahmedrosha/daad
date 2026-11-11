@@ -141,4 +141,16 @@ final class DaadTests: XCTestCase {
         XCTAssertNil(KeyboardViewController.languageBefore("123 !! "))
         XCTAssertNil(KeyboardViewController.languageBefore(""))
     }
+
+    func testInputModeCycle() {
+        let all = InputMode.allCases
+        XCTAssertEqual(InputMode.arabic.step(true, enabled: all), .english)
+        XCTAssertEqual(InputMode.english.step(true, enabled: all), .dual)
+        XCTAssertEqual(InputMode.dual.step(true, enabled: all), .arabic)
+        XCTAssertEqual(InputMode.arabic.step(false, enabled: all), .dual)
+        XCTAssertEqual(InputMode.arabic.step(true, enabled: [.arabic, .dual]), .dual)
+        XCTAssertEqual(InputMode.english.step(true, enabled: [.arabic]), .arabic)   // current one turned off
+        XCTAssertEqual(InputMode.arabic.step(true, enabled: [.arabic]), .arabic)
+        XCTAssertEqual(InputMode.dual.language, .arabic)
+    }
 }

@@ -275,7 +275,8 @@ enum Layouts {
         }
         if let left { keys.append(left) }
         let spaceIndex = keys.count
-        keys.append(Key(action: .space, label: c.language.displayName, smallLabel: true))
+        keys.append(Key(action: .space, label: c.dual && c.language == .arabic ? InputMode.dual.displayName : c.language.displayName,
+                        smallLabel: true))
         if let right { keys.append(right) }
         let isAccent = !c.returnLabel.isEmpty
         keys.append(Key(action: .returnKey, label: c.returnLabel,
