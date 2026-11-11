@@ -6,7 +6,13 @@ struct Suggestion {
     let primary: Bool   // bold: applied automatically by autocorrect
 }
 
+/// Lets the bar scroll sideways even when the drag starts on a button.
+private final class BarScrollView: UIScrollView {
+    override func touchesShouldCancel(in view: UIView) -> Bool { true }
+}
+
 /// The strip above the keys: word suggestions while typing, tool buttons otherwise.
+/// Hide and language stay on the left; the other buttons follow the user's order and scroll sideways.
 final class SuggestionBarView: UIView {
     var onSuggestion: ((String) -> Void)?
     var onDismiss: (() -> Void)?
@@ -18,16 +24,15 @@ final class SuggestionBarView: UIView {
     var onPaste: (() -> Void)?
     var onArrows: (() -> Void)?
     var onGif: (() -> Void)?
+    var onCopyAll: (() -> Void)?
+    var onDeleteAll: (() -> Void)?
 
     private let dismissButton = UIButton(type: .system)
-    private let emojiButton = UIButton(type: .system)
-    private let clipboardButton = UIButton(type: .system)
-    private let toolsButton = UIButton(type: .system)
-    private let calculatorButton = UIButton(type: .system)
     private let languageButton = UIButton(type: .system)
-    private let pasteButton = UIButton(type: .system)
-    private let arrowsButton = UIButton(type: .system)
-    private let gifButton = UIButton(type: .system)
+    private let toolScroll = BarScrollView()
+    private var itemButtons: [(BarItem, UIButton)] = []
+    private var items: [BarItem] = []
+    private var needsScrollToEnd = true
     private let toastLabel = UILabel()
     private var toastWork: DispatchWorkItem?
     private var arrowsOn = false
@@ -40,16 +45,12 @@ final class SuggestionBarView: UIView {
     override init(frame: CGRect) {
         super.init(frame: frame)
         configure(dismissButton, symbol: "keyboard.chevron.compact.down", action: #selector(dismissTapped))
-        configure(emojiButton, symbol: "face.smiling", action: #selector(emojiTapped))
-        configure(clipboardButton, symbol: "list.bullet.clipboard", action: #selector(clipboardTapped))
-        configure(pasteButton, symbol: "doc.on.clipboard", action: #selector(pasteTapped))
-        configure(arrowsButton, symbol: "arrow.up.and.down.and.arrow.left.and.right", action: #selector(arrowsTapped))
-        configure(toolsButton, symbol: "square.grid.2x2", action: #selector(toolsTapped))
-        configure(calculatorButton, symbol: "plusminus.circle", action: #selector(calculatorTapped))
-        gifButton.setTitle("GIF", for: .normal)
-        gifButton.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
-        gifButton.addTarget(self, action: #selector(gifTapped), for: .touchUpInside)
-        addSubview(gifButton)
+        addSubview(dismissButton)
+        toolScroll.showsHorizontalScrollIndicator = false
+        toolScroll.delaysContentTouches = false
+        toolScroll.alwaysBounceHorizontal = false
+        addSubview(toolScroll)
+        setItems(BarItem.allCases.filter { $0 != .deleteAll && $0 != .copyAll })
         toastLabel.textAlignment = .center
         toastLabel.font = UIFont.systemFont(ofSize: 13, weight: .medium)
         toastLabel.numberOfLines = 2
@@ -82,16 +83,43 @@ final class SuggestionBarView: UIView {
         let config = UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)
         button.setImage(UIImage(systemName: symbol, withConfiguration: config), for: .normal)
         button.addTarget(self, action: action, for: .touchUpInside)
-        addSubview(button)
+    }
+
+    /// The tool buttons to show, left to right.
+    func setItems(_ new: [BarItem]) {
+        guard new != items else { return }
+        items = new
+        itemButtons.forEach { $0.1.removeFromSuperview() }
+        itemButtons = new.map { item in
+            let b = UIButton(type: .system)
+            switch item {
+            case .gif:
+                b.setTitle("GIF", for: .normal)
+                b.titleLabel?.font = UIFont.systemFont(ofSize: 13, weight: .heavy)
+            case .calculator:
+                b.setImage(DaadIcons.calculator(size: 20), for: .normal)
+            default:
+                let config = UIImage.SymbolConfiguration(pointSize: 19, weight: .regular)
+                b.setImage(UIImage(systemName: item.symbol ?? "questionmark", withConfiguration: config), for: .normal)
+            }
+            b.addTarget(self, action: #selector(itemTapped(_:)), for: .touchUpInside)
+            toolScroll.addSubview(b)
+            return (item, b)
+        }
+        apply(theme: theme)
+        needsScrollToEnd = true
+        setNeedsLayout()
     }
 
     func apply(theme: KeyboardTheme) {
         self.theme = theme
         backgroundColor = theme.background
-        for b in [dismissButton, emojiButton, clipboardButton, toolsButton, calculatorButton, pasteButton] { b.tintColor = theme.text }
-        arrowsButton.tintColor = arrowsOn ? theme.accent : theme.text
+        dismissButton.tintColor = theme.text
+        for (item, b) in itemButtons {
+            b.tintColor = item == .arrows && arrowsOn ? theme.accent : theme.text
+            b.setTitleColor(theme.text, for: .normal)
+        }
         languageButton.setTitleColor(theme.text, for: .normal)
-        gifButton.setTitleColor(theme.text, for: .normal)
         toastLabel.textColor = theme.text
         toastLabel.backgroundColor = theme.background
         for b in suggestionButtons { b.setTitleColor(theme.text, for: .normal) }
@@ -112,7 +140,7 @@ final class SuggestionBarView: UIView {
     /// Arrow-row button is highlighted while the arrows are shown.
     func setArrowsOn(_ on: Bool) {
         arrowsOn = on
-        arrowsButton.tintColor = on ? theme.accent : theme.text
+        for (item, b) in itemButtons where item == .arrows { b.tintColor = on ? theme.accent : theme.text }
     }
 
     /// Shows the language the button switches to.
@@ -125,13 +153,7 @@ final class SuggestionBarView: UIView {
     func showTools() {
         showingSuggestions = false
         values = []
-        emojiButton.isHidden = false
-        clipboardButton.isHidden = false
-        toolsButton.isHidden = false
-        calculatorButton.isHidden = false
-        pasteButton.isHidden = false
-        arrowsButton.isHidden = false
-        gifButton.isHidden = false
+        toolScroll.isHidden = false
         suggestionButtons.forEach { $0.isHidden = true }
         dividers.forEach { $0.isHidden = true }
     }
@@ -140,13 +162,7 @@ final class SuggestionBarView: UIView {
     func show(_ suggestions: [Suggestion]) {
         guard !suggestions.isEmpty else { showTools(); return }
         showingSuggestions = true
-        emojiButton.isHidden = true
-        clipboardButton.isHidden = true
-        toolsButton.isHidden = true
-        calculatorButton.isHidden = true
-        pasteButton.isHidden = true
-        arrowsButton.isHidden = true
-        gifButton.isHidden = true
+        toolScroll.isHidden = true
         values = suggestions.map { $0.value }
         for (i, b) in suggestionButtons.enumerated() {
             if i < suggestions.count {
@@ -167,12 +183,19 @@ final class SuggestionBarView: UIView {
         let h = bounds.height
         dismissButton.frame = CGRect(x: 4, y: 0, width: 44, height: h)
         languageButton.frame = CGRect(x: 50, y: 0, width: 44, height: h)
-        let right = bounds.width - 4
-        // Right side, from the edge inward.
-        let tools = [toolsButton, arrowsButton, pasteButton, clipboardButton, gifButton, calculatorButton, emojiButton]
-        let w = min(40, (bounds.width - 100) / CGFloat(tools.count))
-        for (i, b) in tools.enumerated() {
-            b.frame = CGRect(x: right - w * CGFloat(i + 1), y: 0, width: w, height: h)
+        // Tool buttons: right-aligned when they fit, otherwise the strip scrolls sideways.
+        toolScroll.frame = CGRect(x: 96, y: 0, width: max(0, bounds.width - 100), height: h)
+        let w: CGFloat = 40
+        let total = w * CGFloat(itemButtons.count)
+        let lead = max(0, toolScroll.bounds.width - total)
+        for (i, entry) in itemButtons.enumerated() {
+            entry.1.frame = CGRect(x: lead + w * CGFloat(i), y: 0, width: w, height: h)
+        }
+        toolScroll.contentSize = CGSize(width: max(total, toolScroll.bounds.width), height: h)
+        // Like before, the bar is anchored on the right: start scrolled to the right end.
+        if needsScrollToEnd, toolScroll.bounds.width > 0 {
+            needsScrollToEnd = false
+            toolScroll.contentOffset = CGPoint(x: toolScroll.contentSize.width - toolScroll.bounds.width, y: 0)
         }
 
         let start: CGFloat = 98
@@ -187,14 +210,22 @@ final class SuggestionBarView: UIView {
     }
 
     @objc private func dismissTapped() { onDismiss?() }
-    @objc private func emojiTapped() { onEmoji?() }
-    @objc private func clipboardTapped() { onClipboard?() }
-    @objc private func toolsTapped() { onTools?() }
-    @objc private func calculatorTapped() { onCalculator?() }
     @objc private func languageTapped() { onLanguage?() }
-    @objc private func pasteTapped() { onPaste?() }
-    @objc private func arrowsTapped() { onArrows?() }
-    @objc private func gifTapped() { onGif?() }
+
+    @objc private func itemTapped(_ sender: UIButton) {
+        guard let item = itemButtons.first(where: { $0.1 === sender })?.0 else { return }
+        switch item {
+        case .emoji: onEmoji?()
+        case .calculator: onCalculator?()
+        case .gif: onGif?()
+        case .clipboard: onClipboard?()
+        case .paste: onPaste?()
+        case .arrows: onArrows?()
+        case .copyAll: onCopyAll?()
+        case .deleteAll: onDeleteAll?()
+        case .tools: onTools?()
+        }
+    }
 
     @objc private func suggestionTapped(_ sender: UIButton) {
         guard values.indices.contains(sender.tag) else { return }

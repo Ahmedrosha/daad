@@ -233,6 +233,7 @@ final class KeyboardViewController: UIInputViewController {
         if hasFullAccess && settings.consumeClearLearnedRequest() { lexicon.clearLearned() }
         if hasFullAccess { clipboard.captureIfChanged() }
         refreshShortcuts()
+        suggestionBar.setItems(settings.barItems)
         autoPickLanguage(refresh: false)
         updateAutoShift()
         reload(force: true)   // picks up changes made in the app's Settings screen
@@ -324,6 +325,12 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
         suggestionBar.onGif = { [weak self] in self?.showPanel(.gif) }
+        suggestionBar.onCopyAll = { [weak self] in
+            self?.copyAllText { message in self?.suggestionBar.flash(message) }
+        }
+        suggestionBar.onDeleteAll = { [weak self] in
+            self?.deleteAllText { message in self?.suggestionBar.flash(message) }
+        }
         suggestionBar.onArrows = { [weak self] in
             guard let self else { return }
             self.settings.set(!self.settings.bool(.arrowRow), for: .arrowRow)
@@ -895,6 +902,64 @@ final class KeyboardViewController: UIInputViewController {
                 return
             }
             recordingUndo { proxy.insertText(text) }
+        case .copyAll:
+            copyAllText { [weak self] message in self?.editPanel.flash(message) }
+        case .deleteAll:
+            deleteAllText { [weak self] message in self?.editPanel.flash(message) }
+        }
+    }
+
+    // MARK: Whole text (a keyboard can't select, so it reads the text by walking the cursor)
+
+    /// Reads the whole text in the box. The keyboard only sees the text near the cursor, so it moves the
+    /// cursor to the end, then back to the start chunk by chunk, and finally puts it back where it was.
+    /// Calls back with the text and the cursor's place in it.
+    private func readAllText(_ done: @escaping (_ text: String, _ cursor: Int) -> Void) {
+        var forward = 0, back = 0, collected = ""
+        func toEnd(_ step: Int) {
+            let after = proxy.documentContextAfterInput ?? ""
+            guard !after.isEmpty, step < 80 else { toStart(0); return }
+            proxy.adjustTextPosition(byCharacterOffset: after.count)
+            forward += after.count
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { toEnd(step + 1) }
+        }
+        func toStart(_ step: Int) {
+            let before = proxy.documentContextBeforeInput ?? ""
+            guard !before.isEmpty, step < 80 else {
+                let cursor = back - forward
+                proxy.adjustTextPosition(byCharacterOffset: cursor)   // back to where it was
+                done(collected, cursor)
+                return
+            }
+            collected = before + collected
+            proxy.adjustTextPosition(byCharacterOffset: -before.count)
+            back += before.count
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.03) { toStart(step + 1) }
+        }
+        toEnd(0)
+    }
+
+    private func copyAllText(_ report: @escaping (String) -> Void) {
+        let arabic = language == .arabic
+        guard hasFullAccess else { report(arabic ? "محتاج Allow Full Access" : "Needs Allow Full Access"); return }
+        readAllText { text, _ in
+            guard !text.isEmpty else { report(arabic ? "الخانة فاضية" : "The box is empty"); return }
+            UIPasteboard.general.string = text
+            report(arabic ? "اتنسخ الكل ✓" : "Copied all ✓")
+        }
+    }
+
+    private func deleteAllText(_ report: @escaping (String) -> Void) {
+        let arabic = language == .arabic
+        readAllText { [weak self] text, cursor in
+            guard let self else { return }
+            guard !text.isEmpty else { report(arabic ? "الخانة فاضية" : "The box is empty"); return }
+            self.proxy.adjustTextPosition(byCharacterOffset: text.count - cursor)   // to the end
+            for _ in 0..<text.count { self.proxy.deleteBackward() }
+            self.undoStack.append(EditRecord(removed: text, added: ""))   // Undo puts it all back
+            self.updateAutoShift()
+            self.reload()
+            report(arabic ? "اتمسح الكل. ترجّعه من تعديل النص ← تراجع" : "Deleted all. Bring it back with Text editing → Undo")
         }
     }
 

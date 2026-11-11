@@ -99,8 +99,8 @@ final class ToolsPanelView: UIView {
         header.apply(theme: theme, title: arabic ? "الأدوات" : "Tools")
         for (i, tool) in KeyboardTool.allCases.enumerated() {
             var config = UIButton.Configuration.plain()
-            config.image = UIImage(systemName: tool.symbol,
-                                   withConfiguration: UIImage.SymbolConfiguration(pointSize: 24))
+            config.image = tool == .calculator ? DaadIcons.calculator(size: 28)
+                : UIImage(systemName: tool.symbol, withConfiguration: UIImage.SymbolConfiguration(pointSize: 24))
             config.imagePlacement = .top
             config.imagePadding = 8
             var title = AttributedString(tool.title(arabic: arabic))
@@ -641,7 +641,7 @@ final class LookPanelView: UIView {
 enum EditAction {
     case wordLeft, wordRight, lineStart, lineEnd, textStart, textEnd
     case up, down, left, right
-    case copy, cut, paste, deleteWord, undo
+    case copy, cut, paste, deleteWord, undo, copyAll, deleteAll
 }
 
 /// Buttons for moving around and editing text, like Gboard's text-editing panel.
@@ -662,7 +662,8 @@ final class EditPanelView: UIView {
         [(.wordLeft, "arrow.left.to.line.compact", "كلمة", "Word"), (.lineStart, "arrow.left.to.line", "طرف السطر", "Line edge"),
          (.lineEnd, "arrow.right.to.line", "طرف السطر", "Line edge"), (.wordRight, "arrow.right.to.line.compact", "كلمة", "Word")],
         [(.copy, "doc.on.doc", "نسخ", "Copy"), (.cut, "scissors", "قص", "Cut"),
-         (.paste, "doc.on.clipboard", "لصق", "Paste")],
+         (.paste, "doc.on.clipboard", "لصق", "Paste"), (.copyAll, "doc.on.doc.fill", "نسخ الكل", "Copy all"),
+         (.deleteAll, "trash", "مسح الكل", "Delete all")],
     ]
 
     override init(frame: CGRect) {

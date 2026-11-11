@@ -233,6 +233,13 @@ struct SettingsView: View {
                            "Switch with the language button, a long press on the space bar, or a quick flick on it: right for the next, left for the previous."))
                 }
 
+                Section {
+                    NavigationLink(t("زراير البار اللي فوق الحروف", "Buttons in the bar above the keys")) { BarItemsView() }
+                } footer: {
+                    Text(t("رتّبهم واختار اللي يظهر. لو كتير، البار بيتسحب يمين وشمال.",
+                           "Order them and pick which show. If there are many, the bar scrolls sideways."))
+                }
+
                 Section(t("شكل الكيبورد", "Layout")) {
                     Picker(t("ترتيب الحروف العربي", "Arabic letter layout"), selection: $arabicLayout) {
                         Text(t("زي الآيفون", "Like iPhone")).tag("iphone")
@@ -575,5 +582,52 @@ private struct PinnedTextsView: View {
     private func move(_ source: IndexSet, _ destination: Int) {
         items.move(fromOffsets: source, toOffset: destination)
         SharedSettings.shared.pinnedTexts = items
+    }
+}
+
+/// Order and show/hide the bar buttons. Hide and language always stay on the left.
+private struct BarItemsView: View {
+    @Environment(\.arabic) private var ar
+    @State private var order = SharedSettings.shared.barOrder
+    @State private var hidden = SharedSettings.shared.barHidden
+
+    private func t(_ arabic: String, _ english: String) -> String { ar ? arabic : english }
+
+    var body: some View {
+        List {
+            Section {
+                ForEach(order, id: \.self) { item in
+                    Toggle(isOn: Binding(get: { !hidden.contains(item) },
+                                         set: { on in
+                                             if on { hidden.remove(item) } else { hidden.insert(item) }
+                                             SharedSettings.shared.barHidden = hidden
+                                         })) {
+                        HStack(spacing: 12) {
+                            icon(item).frame(width: 28)
+                            Text(ar ? item.arabicTitle : item.englishTitle)
+                        }
+                    }
+                }
+                .onMove { from, to in
+                    order.move(fromOffsets: from, toOffset: to)
+                    SharedSettings.shared.barOrder = order
+                }
+            } footer: {
+                Text(t("اسحب من العلامة ☰ عشان ترتّب. الأول في القايمة هو أول واحد من الشمال في البار. زرار الإخفاء وزرار اللغة ثابتين.",
+                       "Drag the ☰ handle to reorder. The first in the list is the leftmost in the bar. Hide and language stay put."))
+            }
+        }
+        .environment(\.editMode, .constant(.active))
+        .navigationTitle(t("زراير البار", "Bar buttons"))
+    }
+
+    @ViewBuilder private func icon(_ item: BarItem) -> some View {
+        if item == .gif {
+            Text("GIF").font(.system(size: 12, weight: .heavy))
+        } else if item == .calculator {
+            Image(uiImage: DaadIcons.calculator(size: 22)).renderingMode(.template)
+        } else {
+            Image(systemName: item.symbol ?? "questionmark")
+        }
     }
 }

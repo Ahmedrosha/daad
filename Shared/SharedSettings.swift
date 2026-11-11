@@ -72,6 +72,53 @@ enum InputMode: String, CaseIterable {
     }
 }
 
+/// Buttons in the bar above the keys (besides hide and language, which stay put on the left).
+enum BarItem: String, CaseIterable {
+    case emoji, calculator, gif, clipboard, paste, arrows, copyAll, deleteAll, tools
+
+    var arabicTitle: String {
+        switch self {
+        case .emoji: return "إيموجي"
+        case .calculator: return "آلة حاسبة"
+        case .gif: return "GIF"
+        case .clipboard: return "الحافظة"
+        case .paste: return "لصق"
+        case .arrows: return "صف الأسهم"
+        case .copyAll: return "نسخ الكل"
+        case .deleteAll: return "مسح الكل"
+        case .tools: return "كل الأدوات"
+        }
+    }
+
+    var englishTitle: String {
+        switch self {
+        case .emoji: return "Emoji"
+        case .calculator: return "Calculator"
+        case .gif: return "GIF"
+        case .clipboard: return "Clipboard"
+        case .paste: return "Paste"
+        case .arrows: return "Arrow row"
+        case .copyAll: return "Copy all"
+        case .deleteAll: return "Delete all"
+        case .tools: return "All tools"
+        }
+    }
+
+    /// SF Symbol for the button (nil: drawn specially, like GIF and the calculator).
+    var symbol: String? {
+        switch self {
+        case .emoji: return "face.smiling"
+        case .calculator, .gif: return nil
+        case .clipboard: return "list.bullet.clipboard"
+        case .paste: return "doc.on.clipboard"
+        case .arrows: return "arrow.up.and.down.and.arrow.left.and.right"
+        case .copyAll: return "doc.on.doc.fill"
+        case .deleteAll: return "trash"
+        case .tools: return "square.grid.2x2"
+        }
+    }
+}
+
 /// Settings shared between the app and the keyboard through the App Group.
 final class SharedSettings {
     static let appGroupID = "group.com.daad.keyboard"
@@ -91,6 +138,8 @@ final class SharedSettings {
     private enum Keys {
         static let language = "language"
         static let inputMode = "inputMode"
+        static let barOrder = "barItemOrder"
+        static let barHidden = "barItemsHidden"
         static let enabledModes = "enabledInputModes"
         static let clearLearned = "clearLearnedRequested"
         static let shortcuts = "textShortcuts"
@@ -233,6 +282,23 @@ final class SharedSettings {
         get { DaadLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .arabic }
         set { defaults.set(newValue.rawValue, forKey: Keys.language) }
     }
+
+    /// Every bar button in the user's order (new buttons from updates go at the end).
+    var barOrder: [BarItem] {
+        get {
+            let saved = (defaults.stringArray(forKey: Keys.barOrder) ?? []).compactMap(BarItem.init(rawValue:))
+            return saved + BarItem.allCases.filter { !saved.contains($0) }
+        }
+        set { defaults.set(newValue.map(\.rawValue), forKey: Keys.barOrder) }
+    }
+
+    var barHidden: Set<BarItem> {
+        get { Set((defaults.stringArray(forKey: Keys.barHidden) ?? []).compactMap(BarItem.init(rawValue:))) }
+        set { defaults.set(newValue.map(\.rawValue), forKey: Keys.barHidden) }
+    }
+
+    /// The bar buttons to show, left to right.
+    var barItems: [BarItem] { barOrder.filter { !barHidden.contains($0) } }
 
     /// The keyboard last used: Arabic, English or both.
     var inputMode: InputMode {
