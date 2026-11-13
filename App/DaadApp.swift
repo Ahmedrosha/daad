@@ -233,6 +233,7 @@ struct SettingsView: View {
                             Text(t("عربي كبير · الضغطة عربي", "Arabic big · tap = Arabic")).tag(DualLook.arabicBig)
                             Text(t("إنجليزي كبير · الضغطة إنجليزي", "English big · tap = English")).tag(DualLook.englishBig)
                             Text(t("الاتنين في الكورنرات · الضغطة إنجليزي", "Both in corners · tap = English")).tag(DualLook.corners)
+                            Text(t("تلقائي حسب اللي بتكتبه", "Automatic, follows what you type")).tag(DualLook.automatic)
                         }
                         .onChange(of: dualLook) { SharedSettings.shared.dualLook = $0 }
                         Toggle(t("الرموز الصغيرة في (ع+En)", "Small symbols on (ع+En)"), isOn: $dualSymbols)

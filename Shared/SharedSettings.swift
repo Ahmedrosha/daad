@@ -81,9 +81,23 @@ enum DualLook: String, CaseIterable {
     case englishBig = "b"
     /// Same size in the corners: English top-left (tap), Arabic bottom-right (flick down).
     case corners = "c"
+    /// Follows what you type: the language of the last letter before the cursor is big and typed by
+    /// a tap; with no letter yet, both sit in the corners. A flick down types the other language and
+    /// makes it the big one from then on.
+    case automatic = "d"
 
     /// Whether a tap types the English letter.
     var tapsEnglish: Bool { self != .arabicBig }
+
+    /// The look to draw, given the language of the last letter before the cursor (for `automatic`).
+    func resolved(lastLetter: DaadLanguage?) -> DualLook {
+        guard self == .automatic else { return self }
+        switch lastLetter {
+        case .arabic: return .arabicBig
+        case .english: return .englishBig
+        case nil: return .corners
+        }
+    }
 }
 
 /// Buttons in the bar above the keys (besides hide and language, which stay put on the left).

@@ -732,7 +732,7 @@ final class KeyboardViewController: UIInputViewController {
             // The both-languages keyboard has its own switch for the flick-up symbols.
             swipeUpSymbols: settings.bool(.swipeUpSymbols) && (inputMode != .dual || settings.bool(.dualSymbols)),
             dual: inputMode == .dual,
-            dualLook: settings.dualLook,
+            dualLook: settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? "")),
             harakatOnHold: settings.bool(.harakatOnHold),
             theme: settings.keyboardTheme)
         if force || context != currentContext {

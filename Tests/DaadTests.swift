@@ -175,4 +175,11 @@ final class DaadTests: XCTestCase {
         c.shift = .on
         XCTAssertEqual(Layouts.build(c).rows.flatMap(\.keys).first { $0.action == .character("ض") }?.downChar, "Q")
     }
+
+    func testAutomaticDualLookFollowsLastLetter() {
+        XCTAssertEqual(DualLook.automatic.resolved(lastLetter: nil), .corners)
+        XCTAssertEqual(DualLook.automatic.resolved(lastLetter: .arabic), .arabicBig)
+        XCTAssertEqual(DualLook.automatic.resolved(lastLetter: .english), .englishBig)
+        XCTAssertEqual(DualLook.corners.resolved(lastLetter: .arabic), .corners)
+    }
 }

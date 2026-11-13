@@ -205,7 +205,7 @@ extension KeyView {
             down.frame = CGRect(x: w * 0.4, y: h * 0.55, width: w * 0.6 - 3, height: h * 0.45 - 1)
             down.font = font(max(13, big * 0.6), for: down.text)
             down.textAlignment = .right
-        case .corners:
+        case .corners, .automatic:
             let size = max(14, big * 0.72)
             label.frame = CGRect(x: 3, y: 1, width: w * 0.7, height: h * 0.5)
             label.font = font(size, for: label.text)
