@@ -178,7 +178,7 @@ final class DaadTests: XCTestCase {
 
     func testAutomaticDualLookFollowsLastLetter() {
         XCTAssertEqual(DualLook.automatic.resolved(lastLetter: nil), .corners)
-        XCTAssertEqual(DualLook.automatic.resolved(lastLetter: .arabic), .arabicBig)
+        XCTAssertEqual(DualLook.automatic.resolved(lastLetter: .arabic), .arabicTop)
         XCTAssertEqual(DualLook.automatic.resolved(lastLetter: .english), .englishBig)
         XCTAssertEqual(DualLook.corners.resolved(lastLetter: .arabic), .corners)
     }

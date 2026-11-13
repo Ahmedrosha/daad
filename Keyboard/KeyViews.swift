@@ -198,7 +198,7 @@ extension KeyView {
             down.frame = CGRect(x: 3, y: 1, width: w * 0.6, height: h * 0.42)
             down.font = font(max(13, big * 0.6), for: down.text)
             down.textAlignment = .left
-        case .englishBig:
+        case .englishBig, .arabicTop:
             label.frame = CGRect(x: 0, y: 0, width: w * 0.86, height: h * 0.86)
             label.font = font(big * 0.95, for: label.text)
             label.textAlignment = .center

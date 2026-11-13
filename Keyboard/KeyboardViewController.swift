@@ -722,7 +722,8 @@ final class KeyboardViewController: UIInputViewController {
             mode: mode,
             shift: shift,
             showNumberRow: settings.bool(.numberRow),
-            arabicDigits: settings.bool(.arabicDigits),
+            // On (ع+En), digits follow the language you're typing: English digits while English is big.
+            arabicDigits: settings.bool(.arabicDigits) && !(inputMode == .dual && currentDualLook.tapsEnglish),
             needsGlobe: needsInputModeSwitchKey,
             returnLabel: returnLabel,
             dark: isDark,
