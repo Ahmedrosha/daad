@@ -732,7 +732,7 @@ final class KeyboardViewController: UIInputViewController {
             // The both-languages keyboard has its own switch for the flick-up symbols.
             swipeUpSymbols: settings.bool(.swipeUpSymbols) && (inputMode != .dual || settings.bool(.dualSymbols)),
             dual: inputMode == .dual,
-            dualLook: settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? "")),
+            dualLook: currentDualLook,
             harakatOnHold: settings.bool(.harakatOnHold),
             theme: settings.keyboardTheme)
         if force || context != currentContext {
@@ -745,7 +745,9 @@ final class KeyboardViewController: UIInputViewController {
             updateHeight()
         }
         keyboardView.glideEnabled = mode == .letters && settings.bool(.glideTyping) && !isSearching
-            && inputMode != .dual   // a down-flick would read as a glide
+            // On (ع+En) a down-flick could read as a glide; only the automatic look allows swipe typing,
+            // in the language whose letters are big.
+            && (inputMode != .dual || settings.dualLook == .automatic)
         keyboardView.splitWhenWide = settings.bool(.splitLandscape)
         lexicon.blockOffensive = settings.bool(.blockOffensive)
         suggestionBar.setInputMode(inputMode)
@@ -1393,6 +1395,11 @@ extension KeyboardViewController: KeyboardViewDelegate {
         setInputMode(inputMode.step(forward, enabled: settings.enabledModes))
     }
 
+    /// How the letters sit on (ع+En) right now (the automatic look follows the last letter typed).
+    private var currentDualLook: DualLook {
+        settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? ""))
+    }
+
     private func setInputMode(_ new: InputMode, refresh: Bool = true) {
         inputMode = new
         language = new.language
@@ -1512,10 +1519,12 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     func keyboardView(_ view: KeyboardView, didGlide path: [CGPoint], keyCenters: [Character: CGPoint], keyWidth: CGFloat) {
         recordingUndo {
+            // On (ع+En), swipe typing writes the language of the big letters.
+            let glideLanguage: DaadLanguage = inputMode == .dual ? (currentDualLook.tapsEnglish ? .english : .arabic) : language
             var results = GlideDecoder.decode(path: path, keyCenters: keyCenters, keyWidth: keyWidth,
-                                              language: language, lexicon: lexicon)
+                                              language: glideLanguage, lexicon: lexicon)
             guard !results.isEmpty else { return }
-            if language == .english && shift != .off {
+            if glideLanguage == .english && shift != .off {
                 results = results.map { shift == .locked ? $0.uppercased() : $0.prefix(1).uppercased() + $0.dropFirst() }
             }
             let word = results[0]
