@@ -43,6 +43,10 @@ final class KeyboardViewController: UIInputViewController {
     private var language: DaadLanguage = .arabic
     /// Arabic, English, or both (Arabic keys with English letters by flicking down).
     private var inputMode: InputMode = .arabic
+    /// Set when the app never shows the keyboard the text typed (Remote Desktop and similar apps that
+    /// turn every key into a key press). Counts typed characters that left no trace.
+    private var blindField = false
+    private var blindStrikes = 0
     private var mode: KeyboardMode = .letters
     private var shift: ShiftState = .off
     private var lastShiftTap: Date?
@@ -228,6 +232,8 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        blindField = false
+        blindStrikes = 0
         mode = .letters
         showPanel(.keys)
         if hasFullAccess && settings.consumeClearLearnedRequest() { lexicon.clearLearned() }
@@ -723,7 +729,7 @@ final class KeyboardViewController: UIInputViewController {
             shift: shift,
             showNumberRow: settings.bool(.numberRow),
             // On (ع+En), digits follow the language you're typing: English digits while English is big.
-            arabicDigits: settings.bool(.arabicDigits) && !(inputMode == .dual && currentDualLook.tapsEnglish),
+            arabicDigits: settings.bool(.arabicDigits) && !plainTyping && !(inputMode == .dual && currentDualLook.tapsEnglish),
             needsGlobe: needsInputModeSwitchKey,
             returnLabel: returnLabel,
             dark: isDark,
@@ -999,7 +1005,7 @@ final class KeyboardViewController: UIInputViewController {
             lastGlideWord = nil
             glideAlternatives = []
         }
-        guard settings.bool(.suggestions) else {
+        guard settings.bool(.suggestions), !secretField else {
             suggestionBar.showTools()
             return
         }
@@ -1138,6 +1144,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Before a space or new line: expand a shortcut, fix the word (autocorrect), and learn it.
     private func commitCurrentWord() {
         lastCorrection = nil
+        guard !plainTyping else { return }   // passwords and codes go in as typed, and aren't learned
         let token = currentToken
         if let text = expansion(for: token) {
             for _ in 0..<token.count { proxy.deleteBackward() }
@@ -1159,9 +1166,62 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    // MARK: Plain typing (passwords, codes, e-mail, Remote Desktop)
+
+    /// Fields where every character must go in exactly as typed: no capital letters on its own, no
+    /// invisible direction marks, no autocorrect or shortcuts, English digits, and nothing learned.
+    private var plainTyping: Bool { blindField || sensitiveField }
+
+    /// Fields the app marks as a password, a one-time code, an e-mail, a user name or a link.
+    private var sensitiveField: Bool {
+        if proxy.isSecureTextEntry == true { return true }
+        if let type = proxy.textContentType ?? nil,
+           [.password, .newPassword, .oneTimeCode, .username, .emailAddress, .URL].contains(type) { return true }
+        switch proxy.keyboardType ?? .default {
+        case .emailAddress, .URL, .numberPad, .phonePad, .asciiCapableNumberPad: return true
+        default: return false
+        }
+    }
+
+    /// Passwords and codes: no suggestion bar either.
+    private var secretField: Bool {
+        if proxy.isSecureTextEntry == true || blindField { return true }
+        if let type = proxy.textContentType ?? nil, [.password, .newPassword, .oneTimeCode].contains(type) { return true }
+        return false
+    }
+
+    /// After typing, check whether the text shows up before the cursor. Apps like Remote Desktop never
+    /// show it; two such characters in a row switch to plain typing until the keyboard closes.
+    private func checkForBlindField() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) { [weak self] in
+            guard let self else { return }
+            let seen = !(self.proxy.documentContextBeforeInput ?? "").isEmpty
+                || !(self.proxy.documentContextAfterInput ?? "").isEmpty
+            if seen {
+                self.blindStrikes = 0
+                if self.blindField { self.blindField = false; self.reload() }
+                return
+            }
+            self.blindStrikes += 1
+            if self.blindStrikes >= 2, !self.blindField {
+                self.blindField = true
+                self.shift = self.shift == .locked ? .locked : .off
+                self.reload()
+            }
+        }
+    }
+
     // MARK: Text helpers
 
     private func insert(_ text: String) {
+        if plainTyping {
+            proxy.insertText(text)
+            lastCorrection = nil
+            if shift == .on { shift = .off }
+            checkForBlindField()
+            reload()
+            return
+        }
         if language == .arabic, settings.bool(.rtlMark),
            (proxy.documentContextBeforeInput ?? "").isEmpty,
            (proxy.documentContextAfterInput ?? "").isEmpty {
@@ -1173,6 +1233,7 @@ final class KeyboardViewController: UIInputViewController {
         lastCorrection = nil
         if shift == .on { shift = .off }
         updateAutoShift()
+        checkForBlindField()
         reload()
     }
 
@@ -1188,12 +1249,14 @@ final class KeyboardViewController: UIInputViewController {
     }
 
     private func commitWordBeforePunctuation() {
+        guard !plainTyping else { return }
         let word = currentWord
         if !word.isEmpty { lexicon.learn(word, after: previousWord(skipping: word)) }
     }
 
     private func updateAutoShift() {
         guard shift != .locked else { return }
+        guard !plainTyping else { if shift == .on { shift = .off }; return }
         shift = shouldAutoCapitalize() ? .on : .off
     }
 
@@ -1245,7 +1308,7 @@ final class KeyboardViewController: UIInputViewController {
     private func handleSpace() {
         let before = proxy.documentContextBeforeInput ?? ""
         let now = Date()
-        if settings.bool(.quickPeriod),
+        if settings.bool(.quickPeriod), !plainTyping,
            let last = lastSpaceTap, now.timeIntervalSince(last) < 0.45,
            before.hasSuffix(" "),
            let previous = before.dropLast().last,
