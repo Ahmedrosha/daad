@@ -182,4 +182,11 @@ final class DaadTests: XCTestCase {
         XCTAssertEqual(DualLook.automatic.resolved(lastLetter: .english), .englishBig)
         XCTAssertEqual(DualLook.corners.resolved(lastLetter: .arabic), .corners)
     }
+
+    func testEgyptianTypoGetsFixed() {
+        let lexicon = Lexicon()
+        let words = lexicon.rank("خاصت", language: .arabic, limit: 3).prefix(2).map(\.word)
+        XCTAssertTrue(words.contains("خلصت"), "got \(words)")
+        XCTAssertFalse(lexicon.rank("هخلص", language: .arabic, limit: 3).filter { $0.kind == .exact }.isEmpty)
+    }
 }

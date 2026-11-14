@@ -91,10 +91,13 @@ final class Lexicon {
         if language == .arabic,
            let url = bundle.url(forResource: "words_eg", withExtension: "txt"),
            let text = try? String(contentsOf: url, encoding: .utf8) {
-            let boost = max(top / 40, 1)
+            // "word" = everyday word, ranked high; "word 3" = a generated verb form, ranked a bit lower.
             for line in text.split(whereSeparator: \.isNewline) {
-                let word = line.trimmingCharacters(in: .whitespaces)
-                guard !word.isEmpty else { continue }
+                let parts = line.split(separator: " ")
+                guard let first = parts.first else { continue }
+                let word = String(first)
+                let tier = parts.count > 1 ? max(Int(parts[1]) ?? 1, 1) : 1
+                let boost = max(top / (40 * tier), 1)
                 if let existing = map[word] {
                     map[word] = max(existing, boost)
                 } else {
@@ -205,7 +208,15 @@ final class Lexicon {
         for (word, score) in correctionScores(typed, language: language) {
             add(word, score, .correction)
         }
-        return Array(best.values.sorted { $0.score > $1.score }.prefix(limit))
+        var sorted = best.values.sorted { $0.score > $1.score }
+        // A word the dictionary doesn't know is often a typo ("خاصت" → "خلصت"): longer words that start
+        // the same can outscore the fix, so keep the best correction among the first two guesses.
+        if !sorted.contains(where: { $0.kind == .exact }),
+           let i = sorted.firstIndex(where: { $0.kind == .correction }), i >= 2 {
+            let fix = sorted.remove(at: i)
+            sorted.insert(fix, at: 1)
+        }
+        return Array(sorted.prefix(limit))
     }
 
     private func completionScores(_ prefix: String, language: DaadLanguage) -> [(String, Double)] {
