@@ -324,7 +324,9 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
     private let sections: [(ar: String, en: String, rows: [Row])] = [
         ("الكتابة", "Typing", [
             (.suggestions, "اقتراح الكلمات", "Word suggestions"),
-            (.autocorrect, "التصحيح التلقائي", "Autocorrect"),
+            (.autocorrectArabic, "التصحيح التلقائي: عربي", "Autocorrect: Arabic"),
+            (.autocorrectEnglish, "التصحيح التلقائي: إنجليزي", "Autocorrect: English"),
+            (.autocorrectDual, "التصحيح التلقائي: (ع+En)", "Autocorrect: (ع+En)"),
             (.glideTyping, "الكتابة بالسحب", "Glide typing"),
             (.emojiSuggestions, "اقتراح إيموجي", "Emoji suggestions"),
             (.franco, "فرانكو ← عربي", "Franco → Arabic"),

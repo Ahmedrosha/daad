@@ -134,7 +134,9 @@ struct SettingsView: View {
 
     // Typing
     @AppStorage(DaadSetting.suggestions.rawValue, store: SharedSettings.store) private var suggestions = true
-    @AppStorage(DaadSetting.autocorrect.rawValue, store: SharedSettings.store) private var autocorrect = false
+    @AppStorage(DaadSetting.autocorrectArabic.rawValue, store: SharedSettings.store) private var autocorrectArabic = false
+    @AppStorage(DaadSetting.autocorrectEnglish.rawValue, store: SharedSettings.store) private var autocorrectEnglish = false
+    @AppStorage(DaadSetting.autocorrectDual.rawValue, store: SharedSettings.store) private var autocorrectDual = false
     @AppStorage(DaadSetting.glideTyping.rawValue, store: SharedSettings.store) private var glideTyping = true
     @AppStorage(DaadSetting.emojiSuggestions.rawValue, store: SharedSettings.store) private var emojiSuggestions = true
     @AppStorage(DaadSetting.blockOffensive.rawValue, store: SharedSettings.store) private var blockOffensive = true
@@ -198,7 +200,9 @@ struct SettingsView: View {
 
                 Section(t("الكتابة", "Typing")) {
                     Toggle(t("اقتراح الكلمات", "Word suggestions"), isOn: $suggestions)
-                    Toggle(t("التصحيح التلقائي", "Autocorrect"), isOn: $autocorrect)
+                    Toggle(t("التصحيح التلقائي: عربي", "Autocorrect: Arabic"), isOn: $autocorrectArabic)
+                    Toggle(t("التصحيح التلقائي: إنجليزي", "Autocorrect: English"), isOn: $autocorrectEnglish)
+                    Toggle(t("التصحيح التلقائي: (ع+En)", "Autocorrect: (ع+En)"), isOn: $autocorrectDual)
                     Toggle(t("الكتابة بالسحب", "Glide typing"), isOn: $glideTyping)
                     Toggle(t("اقتراح إيموجي", "Emoji suggestions"), isOn: $emojiSuggestions)
                     Toggle(t("فرانكو ← عربي (3amel ← عامل)", "Franco → Arabic (3amel → عامل)"), isOn: $franco)
