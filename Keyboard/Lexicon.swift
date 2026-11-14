@@ -70,6 +70,32 @@ final class Lexicon {
 
     private func ensureLoaded(_ language: DaadLanguage) {
         guard entries[language] == nil else { return }
+        let (list, map, top) = Lexicon.loadWords(language)
+        entries[language] = list
+        counts[language] = map
+        maxCount[language] = top
+    }
+
+    private var preloading: Set<DaadLanguage> = []
+
+    /// Reads a word list on a background thread so the first letter typed doesn't wait for it
+    /// (the Arabic list has 100,000 words). Call on the main thread; results are stored on it too.
+    func preload(_ language: DaadLanguage) {
+        guard entries[language] == nil, !preloading.contains(language) else { return }
+        preloading.insert(language)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let (list, map, top) = Lexicon.loadWords(language)
+            DispatchQueue.main.async {
+                self.preloading.remove(language)
+                guard self.entries[language] == nil else { return }   // typing already loaded it
+                self.entries[language] = list
+                self.counts[language] = map
+                self.maxCount[language] = top
+            }
+        }
+    }
+
+    private static func loadWords(_ language: DaadLanguage) -> ([Entry], [String: Int], Int) {
         var list: [Entry] = []
         var map: [String: Int] = [:]
         var top = 1
@@ -108,9 +134,7 @@ final class Lexicon {
             list.sort { (map[$0.word] ?? $0.count) > (map[$1.word] ?? $1.count) }
             list = list.map { Entry(word: $0.word, normalized: $0.normalized, count: map[$0.word] ?? $0.count) }
         }
-        entries[language] = list
-        counts[language] = map
-        maxCount[language] = top
+        return (list, map, top)
     }
 
     // MARK: Text helpers

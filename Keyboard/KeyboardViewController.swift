@@ -234,6 +234,8 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         blindField = false
         blindStrikes = 0
+        lexicon.preload(.arabic)
+        lexicon.preload(.english)
         mode = .letters
         showPanel(.keys)
         if hasFullAccess && settings.consumeClearLearnedRequest() { lexicon.clearLearned() }
