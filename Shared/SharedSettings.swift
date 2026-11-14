@@ -12,9 +12,8 @@ enum DaadSetting: String, CaseIterable {
     case rtlMark         // علامة اتجاه مخفية أول النص العربي
     case suggestions     // شريط الاقتراحات
     case autocorrect     // التصحيح التلقائي (قديم: اتقسم على الكيبوردات التلاتة)
-    case autocorrectArabic   // التصحيح التلقائي في الكيبورد العربي
-    case autocorrectEnglish  // التصحيح التلقائي في الكيبورد الإنجليزي
-    case autocorrectDual     // التصحيح التلقائي في (ع+En)
+    case autocorrectArabic   // التصحيح التلقائي للكلمات العربي (في أي كيبورد)
+    case autocorrectEnglish  // التصحيح التلقائي للكلمات الإنجليزي (في أي كيبورد)
     case glideTyping     // الكتابة بالسحب
     case blockOffensive  // منع الكلمات البذيئة من الاقتراحات
     case emojiSuggestions // اقتراح إيموجي
@@ -28,7 +27,7 @@ enum DaadSetting: String, CaseIterable {
 
     var defaultValue: Bool {
         switch self {
-        case .rtlMark, .autocorrect, .autocorrectArabic, .autocorrectEnglish, .autocorrectDual, .arrowRow: return false
+        case .rtlMark, .autocorrect, .autocorrectArabic, .autocorrectEnglish, .arrowRow: return false
         default: return true
         }
     }
@@ -175,18 +174,14 @@ final class SharedSettings {
         // Autocorrect used to be one switch: carry its value over to the three per-keyboard switches once.
         if !defaults.bool(forKey: "autocorrectSplit") {
             let old = defaults.bool(forKey: DaadSetting.autocorrect.rawValue)
-            for s in [DaadSetting.autocorrectArabic, .autocorrectEnglish, .autocorrectDual] { defaults.set(old, forKey: s.rawValue) }
+            for s in [DaadSetting.autocorrectArabic, .autocorrectEnglish] { defaults.set(old, forKey: s.rawValue) }
             defaults.set(true, forKey: "autocorrectSplit")
         }
     }
 
-    /// Autocorrect for the keyboard in use.
-    func autocorrect(for mode: InputMode) -> Bool {
-        switch mode {
-        case .arabic: return bool(.autocorrectArabic)
-        case .english: return bool(.autocorrectEnglish)
-        case .dual: return bool(.autocorrectDual)
-        }
+    /// Autocorrect for a word in this language, whichever keyboard typed it (Arabic, English or both).
+    func autocorrect(for language: DaadLanguage) -> Bool {
+        bool(language == .arabic ? .autocorrectArabic : .autocorrectEnglish)
     }
 
     private enum Keys {

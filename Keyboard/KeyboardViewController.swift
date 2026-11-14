@@ -1073,7 +1073,7 @@ final class KeyboardViewController: UIInputViewController {
         let (p1, p2) = previousTwoWords(skipping: word)
         let ranked = lexicon.rank(word, language: lang, limit: 3, previous: p1, beforePrevious: p2)
         let known = ranked.contains { $0.kind == .exact }
-        let fix = settings.autocorrect(for: inputMode) ? lexicon.autocorrection(for: word, language: lang) : nil
+        let fix = settings.autocorrect(for: lang) ? lexicon.autocorrection(for: word, language: lang) : nil
 
         var items: [Suggestion] = []
         if known {
@@ -1157,7 +1157,7 @@ final class KeyboardViewController: UIInputViewController {
         guard !word.isEmpty else { return }
         let previous = previousWord(skipping: word)
         let lang = Lexicon.language(of: word)
-        if settings.autocorrect(for: inputMode), lastGlideWord != word,
+        if settings.autocorrect(for: lang), lastGlideWord != word,
            let fix = lexicon.autocorrection(for: word, language: lang) {
             for _ in 0..<word.count { proxy.deleteBackward() }
             proxy.insertText(fix)
