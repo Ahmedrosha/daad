@@ -40,11 +40,21 @@ jobs:
           xcrun simctl status_bar "$SIM" override --time 9:41 --batteryLevel 100 --cellularBars 4 --wifiBars 3
           xcrun simctl install "$SIM" build/Build/Products/Debug-iphonesimulator/Daad.app
           mkdir -p shots
+          # Sample pinned texts / shortcuts so those screens aren't empty (simulator only).
+          GROUP=$(xcrun simctl get_app_container "$SIM" com.daad.keyboard groups | awk '/group.com.daad.keyboard/ {print $2}')
+          if [ -n "$GROUP" ]; then
+            PL="$GROUP/Library/Preferences/group.com.daad.keyboard.plist"
+            mkdir -p "$(dirname "$PL")"
+            /usr/libexec/PlistBuddy -c "Add :pinnedTexts array" -c "Add :pinnedTexts:0 string 'My address: 12 Nile St, Cairo'" \
+              -c "Add :pinnedTexts:1 string 'عنواني: ١٢ شارع النيل، القاهرة'" "$PL" || true
+          fi
           for LANG in ar en; do
-            xcrun simctl terminate "$SIM" com.daad.keyboard || true
-            xcrun simctl launch "$SIM" com.daad.keyboard -appLanguage $LANG
-            sleep 8
-            xcrun simctl io "$SIM" screenshot "shots/home-$LANG.png"
+            for SHOT in home settings shortcuts pinned bar; do
+              xcrun simctl terminate "$SIM" com.daad.keyboard || true
+              xcrun simctl launch "$SIM" com.daad.keyboard -appLanguage $LANG -shot $SHOT
+              sleep 7
+              xcrun simctl io "$SIM" screenshot "shots/$SHOT-$LANG.png"
+            done
           done
           ls -la shots
 

@@ -473,6 +473,7 @@ final class KeyboardViewController: UIInputViewController {
             if hasFullAccess { clipboard.captureIfChanged() }
             configureClipboardPanel()
         }
+        applyPanelDirection(arabic: arabic)
         emojiPanel.isHidden = newPanel != .emoji
         clipboardPanel.isHidden = newPanel != .clipboard
         toolsPanel.isHidden = newPanel != .tools
@@ -489,6 +490,26 @@ final class KeyboardViewController: UIInputViewController {
         if newPanel == .look { reload(force: true) }
         if newPanel == .keys { reload() }
         view.setNeedsLayout()
+    }
+
+    /// The keyboard is right-to-left at heart (Arabic), so lists and labels in the tool screens came out
+    /// mirrored on the English keyboard. Lay every tool screen out in the keyboard's current language.
+    private func applyPanelDirection(arabic: Bool) {
+        let panels: [UIView] = [emojiPanel, clipboardPanel, toolsPanel, calculatorPanel, settingsPanel,
+                                lookPanel, editPanel, searchPanel]
+        for panel in panels {
+            if #available(iOS 17.0, *) {
+                panel.traitOverrides.layoutDirection = arabic ? .rightToLeft : .leftToRight
+            } else {
+                Self.setDirection(of: panel, arabic: arabic)
+            }
+        }
+    }
+
+    /// iOS 16 has no trait overrides: set the direction on the view tree (Arabic = what it was before).
+    private static func setDirection(of view: UIView, arabic: Bool) {
+        view.semanticContentAttribute = arabic ? .forceRightToLeft : .forceLeftToRight
+        view.subviews.forEach { setDirection(of: $0, arabic: arabic) }
     }
 
     // MARK: One-handed mode

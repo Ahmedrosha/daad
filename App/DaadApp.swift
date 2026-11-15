@@ -53,16 +53,28 @@ struct DaadApp: App {
     }
 }
 
+/// Simulator screenshots only: `-shot settings|shortcuts|pinned|bar` opens that screen at launch.
+let shotScreen: String? = {
+    #if DEBUG
+    let args = ProcessInfo.processInfo.arguments
+    if let i = args.firstIndex(of: "-shot"), i + 1 < args.count { return args[i + 1] }
+    #endif
+    return nil
+}()
+
 struct ContentView: View {
     @Environment(\.arabic) private var ar
     @ObservedObject var store: DaadStore
+    @State private var tab = shotScreen.map { $0 == "home" ? 0 : 1 } ?? 0
 
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             HomeView(store: store)
                 .tabItem { Label(ar ? "الرئيسية" : "Home", systemImage: "house") }
+                .tag(0)
             SettingsView()
                 .tabItem { Label(ar ? "الإعدادات" : "Settings", systemImage: "gearshape") }
+                .tag(1)
         }
     }
 }
@@ -130,6 +142,9 @@ private struct StepRow: View {
 
 struct SettingsView: View {
     @Environment(\.arabic) private var ar
+    @State private var shotShortcuts = shotScreen == "shortcuts"
+    @State private var shotPinned = shotScreen == "pinned"
+    @State private var shotBar = shotScreen == "bar"
     @AppStorage("appLanguage") private var appLanguage = defaultAppLanguage
 
     // Typing
@@ -383,6 +398,9 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle(t("الإعدادات", "Settings"))
+            .navigationDestination(isPresented: $shotShortcuts) { ShortcutsView() }
+            .navigationDestination(isPresented: $shotPinned) { PinnedTextsView() }
+            .navigationDestination(isPresented: $shotBar) { BarItemsView() }
             .confirmationDialog(t("تمسح كل الكلمات اللي اتعلمها الكيبورد؟", "Clear all learned words?"),
                                 isPresented: $confirmClear, titleVisibility: .visible) {
                 Button(t("مسح", "Clear"), role: .destructive) {
