@@ -33,6 +33,9 @@ targets:
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         CFBundleDisplayName: ضاد
         CFBundleDevelopmentRegion: ar
+        CFBundleLocalizations:
+          - ar
+          - en
         LSRequiresIPhoneOS: true
         UILaunchScreen: {}
         ITSAppUsesNonExemptEncryption: false

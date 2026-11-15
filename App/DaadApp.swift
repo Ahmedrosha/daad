@@ -51,7 +51,13 @@ struct DaadApp: App {
         let attribute: UISemanticContentAttribute = language == "ar" ? .forceRightToLeft : .forceLeftToRight
         UIView.appearance().semanticContentAttribute = attribute
         UINavigationBar.appearance().semanticContentAttribute = attribute
-        // The whole window too, so system pieces (the back arrow, edit controls) point the right way.
+        // iOS picks the app's own direction (the back arrow, system buttons) from its language at launch:
+        // keep that in step with the chosen language, so it's right from the next time the app opens.
+        let code = language == "ar" ? "ar" : "en"
+        if UserDefaults.standard.stringArray(forKey: "AppleLanguages")?.first != code {
+            UserDefaults.standard.set([code], forKey: "AppleLanguages")
+        }
+        // The whole window too, so system pieces point the right way.
         if #available(iOS 17.0, *) {
             for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
                 for window in scene.windows {
@@ -524,8 +530,8 @@ private struct ShortcutsView: View {
     var body: some View {
         Form {
             Section(ar ? "اختصار جديد" : "New shortcut") {
-                TextField(ar ? "الاختصار (مثلاً @@)" : "Shortcut (e.g. @@)", text: $newKey)
-                    .multilineTextAlignment(.leading)
+                TextField(ar ? "الاختصار (مثلاً @@)" : "Shortcut (e.g. @@)", text: $newKey, axis: .vertical)
+                    .lineLimit(1)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 TextField(ar ? "النص (مثلاً إيميلك)" : "Text (e.g. your email)", text: $newValue, axis: .vertical)
