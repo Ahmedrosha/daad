@@ -38,6 +38,7 @@ struct DaadApp: App {
                 .environment(\.arabic, appLanguage == "ar")
                 .environment(\.layoutDirection, appLanguage == "ar" ? .rightToLeft : .leftToRight)
                 .onChange(of: appLanguage) { DaadApp.applyDirection($0) }
+                .onAppear { DaadApp.applyDirection(appLanguage) }
                 .onChange(of: scenePhase) { phase in
                     if phase == .active { Task { await store.refresh() } }
                 }
@@ -50,6 +51,14 @@ struct DaadApp: App {
         let attribute: UISemanticContentAttribute = language == "ar" ? .forceRightToLeft : .forceLeftToRight
         UIView.appearance().semanticContentAttribute = attribute
         UINavigationBar.appearance().semanticContentAttribute = attribute
+        // The whole window too, so system pieces (the back arrow, edit controls) point the right way.
+        if #available(iOS 17.0, *) {
+            for case let scene as UIWindowScene in UIApplication.shared.connectedScenes {
+                for window in scene.windows {
+                    window.traitOverrides.layoutDirection = language == "ar" ? .rightToLeft : .leftToRight
+                }
+            }
+        }
     }
 }
 
@@ -516,6 +525,7 @@ private struct ShortcutsView: View {
         Form {
             Section(ar ? "اختصار جديد" : "New shortcut") {
                 TextField(ar ? "الاختصار (مثلاً @@)" : "Shortcut (e.g. @@)", text: $newKey)
+                    .multilineTextAlignment(.leading)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 TextField(ar ? "النص (مثلاً إيميلك)" : "Text (e.g. your email)", text: $newValue, axis: .vertical)
@@ -571,6 +581,7 @@ private struct ShortcutsView: View {
 
 private struct PinnedTextsView: View {
     @Environment(\.arabic) private var ar
+    @State private var editMode: EditMode = .inactive
     @State private var items: [String] = []
     @State private var newText = ""
 
@@ -594,7 +605,13 @@ private struct PinnedTextsView: View {
             }
         }
         .navigationTitle(ar ? "المحفوظات" : "Pinned texts")
-        .toolbar { EditButton() }
+        .toolbar {
+            // The system Edit button follows the phone's language; this one follows the app's.
+            Button(editMode == .active ? (ar ? "تم" : "Done") : (ar ? "تعديل" : "Edit")) {
+                withAnimation { editMode = editMode == .active ? .inactive : .active }
+            }
+        }
+        .environment(\.editMode, $editMode)
         .onAppear { items = SharedSettings.shared.pinnedTexts }
     }
 
