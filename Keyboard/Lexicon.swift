@@ -60,10 +60,40 @@ final class Lexicon {
         return map
     }()
 
-    func configure(store: UserDefaults) {
+    /// `other`: the keyboard's own storage, used while Full Access was off. With Full Access on, the
+    /// words learned there are merged in, so turning Full Access on or off doesn't lose any.
+    func configure(store: UserDefaults, mergingFrom other: UserDefaults? = nil) {
         self.store = store
         learned = store.dictionary(forKey: Lexicon.learnedKey) as? [String: Int] ?? [:]
         bigrams = store.dictionary(forKey: Lexicon.bigramsKey) as? [String: [String: Int]] ?? [:]
+        guard let other, other !== store else { return }
+        let otherLearned = other.dictionary(forKey: Lexicon.learnedKey) as? [String: Int] ?? [:]
+        let otherBigrams = other.dictionary(forKey: Lexicon.bigramsKey) as? [String: [String: Int]] ?? [:]
+        guard !otherLearned.isEmpty || !otherBigrams.isEmpty else { return }
+        for (w, n) in otherLearned { learned[w] = max(learned[w] ?? 0, n) }
+        for (p, followers) in otherBigrams {
+            var merged = bigrams[p] ?? [:]
+            for (w, n) in followers { merged[w] = max(merged[w] ?? 0, n) }
+            bigrams[p] = merged
+        }
+        if learned.count > Lexicon.learnedLimit {
+            let drop = learned.sorted { $0.value < $1.value }.prefix(learned.count - Lexicon.learnedLimit)
+            for (w, _) in drop { learned[w] = nil }
+        }
+        store.set(learned, forKey: Lexicon.learnedKey)
+        store.set(bigrams, forKey: Lexicon.bigramsKey)
+        // Keep the other copy too: if Full Access is turned off again, the keyboard reads that one.
+        other.set(learned, forKey: Lexicon.learnedKey)
+        other.set(bigrams, forKey: Lexicon.bigramsKey)
+    }
+
+    /// The user undid an autocorrect: treat what they typed as a real word from now on.
+    func keep(_ word: String) {
+        let k = key(word)
+        guard k.count >= 2, k.count <= 30 else { return }
+        learned[k] = max(learned[k] ?? 0, 2)   // 2 = known, so it isn't "fixed" again
+        unsaved += 1
+        flush()
     }
 
     // MARK: Loading

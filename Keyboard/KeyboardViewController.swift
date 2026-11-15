@@ -113,7 +113,7 @@ final class KeyboardViewController: UIInputViewController {
         language = inputMode.language
         // Tells the app which language is being typed, so it lays the text out the right way.
         primaryLanguage = language == .arabic ? "ar" : "en-US"
-        lexicon.configure(store: store)
+        lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
         clipboard.configure(store: store)
 
         keyboardView.delegate = self
@@ -1467,6 +1467,8 @@ extension KeyboardViewController: KeyboardViewDelegate {
             if !word, let c = lastCorrection, (proxy.documentContextBeforeInput ?? "").hasSuffix(c.replacement + " ") {
                 for _ in 0..<(c.replacement.count + 1) { proxy.deleteBackward() }
                 proxy.insertText(c.original)
+                // Undoing the fix means the word was right: never "fix" it again.
+                lexicon.keep(c.original)
                 lastCorrection = nil
                 reload()
                 return

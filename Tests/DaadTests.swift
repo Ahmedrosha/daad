@@ -189,4 +189,25 @@ final class DaadTests: XCTestCase {
         XCTAssertTrue(words.contains("خلصت"), "got \(words)")
         XCTAssertFalse(lexicon.rank("هخلص", language: .arabic, limit: 3).filter { $0.kind == .exact }.isEmpty)
     }
+
+    func testUndoneCorrectionIsKept() {
+        let lexicon = Lexicon()
+        let suite = UserDefaults(suiteName: "daad.tests.keep")!
+        suite.removePersistentDomain(forName: "daad.tests.keep")
+        lexicon.configure(store: suite)
+        XCTAssertNotNil(lexicon.autocorrection(for: "خاصت", language: .arabic))
+        lexicon.keep("خاصت")
+        XCTAssertNil(lexicon.autocorrection(for: "خاصت", language: .arabic))
+    }
+
+    func testLearnedWordsMergeAcrossFullAccess() {
+        let a = UserDefaults(suiteName: "daad.tests.a")!, b = UserDefaults(suiteName: "daad.tests.b")!
+        a.removePersistentDomain(forName: "daad.tests.a"); b.removePersistentDomain(forName: "daad.tests.b")
+        let first = Lexicon()
+        first.configure(store: b)
+        first.keep("زفتاوي")
+        let second = Lexicon()
+        second.configure(store: a, mergingFrom: b)
+        XCTAssertTrue(second.isKnown("زفتاوي", language: .arabic))
+    }
 }
