@@ -210,4 +210,13 @@ final class DaadTests: XCTestCase {
         second.configure(store: a, mergingFrom: b)
         XCTAssertTrue(second.isKnown("زفتاوي", language: .arabic))
     }
+
+    func testDualDeleteIconsFollowTypingLanguage() {
+        var c = context(.arabic)
+        c.dual = true
+        c.dualLook = .englishBig
+        XCTAssertEqual(Layouts.build(c).rows.flatMap(\.keys).first { $0.action == .backspace }?.symbol, "delete.left")
+        c.dualLook = .arabicTop
+        XCTAssertEqual(Layouts.build(c).rows.flatMap(\.keys).first { $0.action == .backspace }?.symbol, "delete.right")
+    }
 }

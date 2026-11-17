@@ -15,6 +15,9 @@ struct LayoutContext: Equatable {
     var swipeUpSymbols: Bool = true
     var dual: Bool = false
     var dualLook: DualLook = .arabicBig
+
+    /// (ع+En) while the tap types English: the delete keys point the English way.
+    var typingEnglishOnDual: Bool { dual && language == .arabic && dualLook.tapsEnglish }
     var harakatOnHold: Bool = true
     var theme: String = "system"
 }
@@ -164,7 +167,7 @@ enum Layouts {
             let shiftW: CGFloat = 1.25, deleteW: CGFloat = 1.35
             max = Swift.max(max, CGFloat(r3.count) + shiftW + deleteW)
             rows.append(KeyRow(keys: [shiftKey(c, width: shiftW)] + chars(r3, alternates: arabicAlternates)
-                                   + [backspace(width: deleteW, arabic: true)], rightToLeft: false))
+                                   + [backspace(width: deleteW, arabic: !c.typingEnglishOnDual)], rightToLeft: false))
         } else {
             rows.append(KeyRow(keys: chars(r3, alternates: arabicAlternates) + [backspace(width: 1.6, arabic: true)], rightToLeft: false))
         }
@@ -214,7 +217,7 @@ enum Layouts {
             Key(action: .character(primary[i]), label: primary[i], alternates: [other[i]], width: width)
         }
         // Deletes the character after the cursor.
-        keys.append(Key(action: .forwardDelete, label: "", symbol: c.language == .arabic ? "delete.left" : "delete.right",
+        keys.append(Key(action: .forwardDelete, label: "", symbol: c.language == .arabic && !c.typingEnglishOnDual ? "delete.left" : "delete.right",
                         width: deleteWidth, style: .special))
         return KeyRow(keys: keys, rightToLeft: false)
     }
