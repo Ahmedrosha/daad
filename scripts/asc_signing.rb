@@ -94,7 +94,7 @@ def wait_for_processing
   loop do
     build = api("GET", "/v1/builds?filter[app]=#{app["id"]}&sort=-uploadedDate&limit=1")["data"].first
     st = build && build["attributes"]["processingState"]
-    fresh = build && Time.parse(build["attributes"]["uploadedDate"]) > started - 20 * 60
+    fresh = build && Time.parse(build["attributes"]["uploadedDate"]) > started - 6 * 60
     puts "Newest build #{build && build["attributes"]["version"]}: #{st}#{fresh ? "" : " (older upload, waiting for the new one)"}"
     break if fresh && st != "PROCESSING"
     break puts("Stopped waiting after 45 minutes") if Time.now - started > 45 * 60
