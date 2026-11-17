@@ -199,11 +199,14 @@ extension KeyView {
             down.font = font(max(13, big * 0.6), for: down.text)
             down.textAlignment = .left
         case .englishBig, .arabicTop:
+            // Latin letters look smaller than Arabic ones at the same size: while English is the tap
+            // letter, make it clearly the big one and the Arabic corner letter smaller.
+            let englishMain = !((label.text?.first).map(TextHelpers.isArabic) ?? false)
             label.frame = CGRect(x: 0, y: 0, width: w * 0.86, height: h * 0.86)
-            label.font = font(big * 0.95, for: label.text)
+            label.font = font(big * (englishMain ? 1.2 : 0.95), for: label.text)
             label.textAlignment = .center
             down.frame = CGRect(x: w * 0.4, y: h * 0.55, width: w * 0.6 - 3, height: h * 0.45 - 1)
-            down.font = font(max(13, big * 0.6), for: down.text)
+            down.font = font(englishMain ? max(11, big * 0.48) : max(13, big * 0.6), for: down.text)
             down.textAlignment = .right
         case .corners, .automatic:
             let size = max(14, big * 0.72)
