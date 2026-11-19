@@ -112,7 +112,7 @@ final class KeyboardViewController: UIInputViewController {
         if !settings.enabledModes.contains(inputMode) { inputMode = settings.enabledModes[0] }
         language = inputMode.language
         // Tells the app which language is being typed, so it lays the text out the right way.
-        primaryLanguage = language == .arabic ? "ar" : "en-US"
+        primaryLanguage = typingLanguageCode
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
         clipboard.configure(store: store)
 
@@ -265,11 +265,11 @@ final class KeyboardViewController: UIInputViewController {
     private func announceLanguage() {
         let empty = (proxy.documentContextBeforeInput ?? "").isEmpty && (proxy.documentContextAfterInput ?? "").isEmpty
         guard empty else { return }   // with text in the box, the text itself decides the side
-        let code = language == .arabic ? "ar" : "en-US"
+        let code = typingLanguageCode
         primaryLanguage = code == "ar" ? "en-US" : "ar"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
-            self.primaryLanguage = self.language == .arabic ? "ar" : "en-US"
+            self.primaryLanguage = self.typingLanguageCode
         }
     }
 
@@ -745,7 +745,16 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    /// The language the app is told about, which decides the side an empty box starts on. On (ع+En)
+    /// it's the language a tap types now, not the Arabic layout underneath.
+    private var typingLanguageCode: String {
+        if inputMode == .dual { return currentDualLook.tapsEnglish ? "en-US" : "ar" }
+        return language == .arabic ? "ar" : "en-US"
+    }
+
     private func reload(force: Bool = false) {
+        // (ع+En): keep the app told which language is being typed (it can change with each letter).
+        if inputMode == .dual, primaryLanguage != typingLanguageCode { primaryLanguage = typingLanguageCode }
         let context = LayoutContext(
             language: language,
             mode: mode,
@@ -1502,7 +1511,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
         inputMode = new
         language = new.language
         settings.inputMode = new
-        primaryLanguage = language == .arabic ? "ar" : "en-US"
+        primaryLanguage = typingLanguageCode
         mode = .letters
         guard refresh else { return }
         updateAutoShift()
