@@ -1198,6 +1198,16 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
+    // MARK: Memory
+
+    /// iOS gives keyboards little memory: when it runs short, drop everything that can be loaded again.
+    override func didReceiveMemoryWarning() {
+        super.didReceiveMemoryWarning()
+        // (ع+En) types both languages, so it keeps both word lists.
+        lexicon.trim(keeping: inputMode == .dual ? [.arabic, .english] : [language])
+        URLCache.shared.removeAllCachedResponses()
+    }
+
     // MARK: Plain typing (passwords, codes, e-mail, Remote Desktop)
 
     /// Fields where every character must go in exactly as typed: no capital letters on its own, no

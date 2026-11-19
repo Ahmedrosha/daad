@@ -125,6 +125,18 @@ final class Lexicon {
         }
     }
 
+    /// Low memory: let go of what can be read again later (the other language's words, the Franco
+    /// index and the next-word tables). Learned words stay.
+    func trim(keeping languages: Set<DaadLanguage>) {
+        for lang in [DaadLanguage.arabic, .english] where !languages.contains(lang) {
+            entries[lang] = nil
+            counts[lang] = nil
+            maxCount[lang] = nil
+        }
+        francoIndex = nil
+        nextTables = [:]
+    }
+
     private static func loadWords(_ language: DaadLanguage) -> ([Entry], [String: Int], Int) {
         var list: [Entry] = []
         var map: [String: Int] = [:]
