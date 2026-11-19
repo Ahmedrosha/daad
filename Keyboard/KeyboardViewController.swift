@@ -46,6 +46,9 @@ final class KeyboardViewController: UIInputViewController {
     /// Set when the app never shows the keyboard the text typed (Remote Desktop and similar apps that
     /// turn every key into a key press). Counts typed characters that left no trace.
     private var blindField = false
+    /// The language of the last letter this keyboard typed. Some apps (WhatsApp) show the keyboard the
+    /// new text a moment late, so (ع+En) goes by this until the cursor moves or text is deleted.
+    private var typedLanguage: DaadLanguage?
     private var blindStrikes = 0
     private var mode: KeyboardMode = .letters
     private var shift: ShiftState = .off
@@ -234,6 +237,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         blindField = false
         blindStrikes = 0
+        typedLanguage = nil
         lexicon.preload(.arabic)
         lexicon.preload(.english)
         mode = .letters
@@ -293,6 +297,13 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
         super.viewWillTransition(to: size, with: coordinator)
         coordinator.animate(alongsideTransition: { _ in self.updateHeight() })
+    }
+
+    /// The cursor was moved in the app (a tap in the text): go by the text around it again.
+    override func selectionDidChange(_ textInput: UITextInput?) {
+        super.selectionDidChange(textInput)
+        typedLanguage = nil
+        reload()
     }
 
     override func textDidChange(_ textInput: UITextInput?) {
@@ -1270,7 +1281,13 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: Text helpers
 
+    private func noteTyped(_ text: String) {
+        guard let letter = text.last(where: \.isLetter) else { return }
+        typedLanguage = TextHelpers.isArabic(letter) ? .arabic : .english
+    }
+
     private func insert(_ text: String) {
+        noteTyped(text)
         if plainTyping {
             proxy.insertText(text)
             lastCorrection = nil
@@ -1497,6 +1514,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
+        typedLanguage = nil   // after deleting, read the letter before the cursor again
         recordingUndo {
             if isSearching {
                 if !query.isEmpty { query.removeLast() }
@@ -1526,7 +1544,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     /// How the letters sit on (ع+En) right now (the automatic look follows the last letter typed).
     private var currentDualLook: DualLook {
-        settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? ""))
+        settings.dualLook.resolved(lastLetter: typedLanguage ?? Self.languageBefore(proxy.documentContextBeforeInput ?? ""))
     }
 
     private func setInputMode(_ new: InputMode, refresh: Bool = true) {
@@ -1562,6 +1580,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
         lockedCursorDirection = began ? paragraphIsRightToLeft : nil
         if !began {
+            typedLanguage = nil
             autoPickLanguage(refresh: false)
             updateAutoShift()
             reload()   // also refreshes the suggestions
@@ -1662,6 +1681,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 proxy.insertText(" ")
             }
             proxy.insertText(word)
+            noteTyped(word)
             lastCorrection = nil
             lastGlideWord = word
             glideAlternatives = results
