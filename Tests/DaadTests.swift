@@ -219,4 +219,38 @@ final class DaadTests: XCTestCase {
         c.dualLook = .arabicTop
         XCTAssertEqual(Layouts.build(c).rows.flatMap(\.keys).first { $0.action == .backspace }?.symbol, "delete.right")
     }
+
+    // MARK: Memory (prints how much each part of the word data takes; keyboards have a tight budget)
+
+    private func footprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) { task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count) }
+        }
+        return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : -1
+    }
+
+    func testMemoryFootprint() {
+        let lexicon = Lexicon()
+        var last = footprintMB()
+        func step(_ name: String, _ work: () -> Void) {
+            work()
+            let now = footprintMB()
+            print("MEMORY \(name): +\(String(format: "%.1f", now - last)) MB (total \(String(format: "%.1f", now)) MB)")
+            last = now
+        }
+        step("arabic words") { _ = lexicon.isKnown("خلصت", language: .arabic) }
+        step("english words") { _ = lexicon.isKnown("hello", language: .english) }
+        step("arabic suggestions") { _ = lexicon.rank("خاصت", language: .arabic, limit: 3) }
+        step("franco index") { _ = lexicon.francoCandidates("ezayak", limit: 3) }
+        step("next words") {
+            _ = lexicon.predictions(previous: "انا", beforePrevious: nil, language: .arabic, limit: 3)
+            _ = lexicon.predictions(previous: "i", beforePrevious: nil, language: .english, limit: 3)
+        }
+        step("glide vocabulary") {
+            _ = lexicon.glideVocabulary(.arabic)
+            _ = lexicon.glideVocabulary(.english)
+        }
+    }
 }
