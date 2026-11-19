@@ -1094,7 +1094,7 @@ final class KeyboardViewController: UIInputViewController {
         let (p1, p2) = previousTwoWords(skipping: word)
         let ranked = lexicon.rank(word, language: lang, limit: 3, previous: p1, beforePrevious: p2)
         let known = ranked.contains { $0.kind == .exact }
-        let fix = settings.autocorrect(for: lang) ? lexicon.autocorrection(for: word, language: lang) : nil
+        let fix = settings.autocorrect(for: lang) && !searchField ? lexicon.autocorrection(for: word, language: lang) : nil
 
         var items: [Suggestion] = []
         if known {
@@ -1178,7 +1178,7 @@ final class KeyboardViewController: UIInputViewController {
         guard !word.isEmpty else { return }
         let previous = previousWord(skipping: word)
         let lang = Lexicon.language(of: word)
-        if settings.autocorrect(for: lang), lastGlideWord != word,
+        if settings.autocorrect(for: lang), !searchField, lastGlideWord != word,
            let fix = lexicon.autocorrection(for: word, language: lang) {
             for _ in 0..<word.count { proxy.deleteBackward() }
             proxy.insertText(fix)
@@ -1204,6 +1204,11 @@ final class KeyboardViewController: UIInputViewController {
         case .emailAddress, .URL, .numberPad, .phonePad, .asciiCapableNumberPad: return true
         default: return false
         }
+    }
+
+    /// A search box: what's typed must match exactly, so no hidden marks and no autocorrect.
+    private var searchField: Bool {
+        proxy.keyboardType == .webSearch || proxy.returnKeyType == .search
     }
 
     /// Passwords and codes: no suggestion bar either.
@@ -1245,7 +1250,9 @@ final class KeyboardViewController: UIInputViewController {
             reload()
             return
         }
-        if language == .arabic, settings.bool(.rtlMark),
+        // The invisible right-to-left mark only goes before Arabic letters, and never in a search box
+        // (it would become part of what's searched for).
+        if settings.bool(.rtlMark), !searchField, let first = text.first, TextHelpers.isArabic(first),
            (proxy.documentContextBeforeInput ?? "").isEmpty,
            (proxy.documentContextAfterInput ?? "").isEmpty {
             proxy.insertText("\u{200F}")
@@ -1264,6 +1271,8 @@ final class KeyboardViewController: UIInputViewController {
     /// left-to-right mark goes before the space so the numbers stay in order. Nothing changes while typing "2 ".
     private func keepNumbersInOrder(before text: String) {
         guard let first = text.first, first.isASCII, first.isNumber else { return }
+        // Only in right-to-left (Arabic) typing, and never in a search box.
+        guard !searchField, language == .arabic, !(inputMode == .dual && currentDualLook.tapsEnglish) else { return }
         let before = Array(proxy.documentContextBeforeInput ?? "")
         guard before.count >= 2, before[before.count - 1] == " ",
               before[before.count - 2].isASCII, before[before.count - 2].isNumber else { return }
