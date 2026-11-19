@@ -30,6 +30,7 @@ final class KeyboardView: UIView {
     private var rowViews: [[KeyView]] = []
     private var maxUnits: CGFloat = 10
     private var theme = KeyboardTheme.make(dark: false)
+    private var currentLook: KeyLook?
     private var popup = KeyPopupView(theme: .make(dark: false))
     private var trackers: [ObjectIdentifier: TouchTracker] = [:]
 
@@ -61,9 +62,24 @@ final class KeyboardView: UIView {
 
     func configure(rows: [KeyRow], maxUnits: CGFloat, theme: KeyboardTheme, look: KeyLook = KeyLook()) {
         cancelAllTouches()
+        // Same keys in the same places (only letters changed, e.g. Shift): update them in place.
+        let sameShape = self.theme == theme && currentLook == look && self.maxUnits == maxUnits
+            && rowViews.count == rows.count
+            && zip(self.rows, rows).allSatisfy { old, new in
+                old.rightToLeft == new.rightToLeft && old.keys.count == new.keys.count
+                    && zip(old.keys, new.keys).allSatisfy { $0.width == $1.width && $0.style == $1.style }
+            }
         self.rows = rows
         self.maxUnits = maxUnits
         self.theme = theme
+        if sameShape {
+            for (views, row) in zip(rowViews, rows) {
+                for (v, key) in zip(views, row.keys) { v.update(key: key) }
+            }
+            trail.path = nil
+            return
+        }
+        currentLook = look
         backgroundColor = theme.background
 
         rowViews.flatMap { $0 }.forEach { $0.removeFromSuperview() }

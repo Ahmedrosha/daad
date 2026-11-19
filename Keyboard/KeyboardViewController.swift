@@ -276,6 +276,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         lexicon.flush()
+        recordMemory()
     }
 
     /// iOS holds back touches near the bottom edge (home-indicator gesture), so a long press on the
@@ -1200,6 +1201,15 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: Memory
 
+    private var insertsSinceMemoryCheck = 0
+
+    /// Saves the keyboard's memory use for the app's Settings → Keyboard memory (needs Full Access).
+    private func recordMemory() {
+        guard hasFullAccess, let group = SharedSettings.store else { return }
+        MemoryReport.record(in: group)
+    }
+
+
     /// iOS gives keyboards little memory: when it runs short, drop everything that can be loaded again.
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
@@ -1284,6 +1294,8 @@ final class KeyboardViewController: UIInputViewController {
         updateAutoShift()
         checkForBlindField()
         reload()
+        insertsSinceMemoryCheck += 1
+        if insertsSinceMemoryCheck >= 25 { insertsSinceMemoryCheck = 0; recordMemory() }
     }
 
     /// Typing "2 4" in right-to-left text shows "4 2". When a digit follows "digit + space", an invisible

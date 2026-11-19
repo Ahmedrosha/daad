@@ -157,6 +157,33 @@ enum BarItem: String, CaseIterable {
     }
 }
 
+/// The keyboard's memory use, written by the keyboard (with Full Access) and shown in the app.
+enum MemoryReport {
+    static let nowKey = "diagMemoryNowMB"
+    static let peakKey = "diagMemoryPeakMB"
+    static let dateKey = "diagMemoryDate"
+
+    /// Memory this process uses now, in MB (what iOS counts against the keyboard's limit).
+    static func footprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
+    }
+
+    static func record(in defaults: UserDefaults) {
+        let now = footprintMB()
+        guard now > 0 else { return }
+        defaults.set(now, forKey: nowKey)
+        defaults.set(max(now, defaults.double(forKey: peakKey)), forKey: peakKey)
+        defaults.set(Date().timeIntervalSince1970, forKey: dateKey)
+    }
+}
+
 /// Settings shared between the app and the keyboard through the App Group.
 final class SharedSettings {
     static let appGroupID = "group.com.daad.keyboard"

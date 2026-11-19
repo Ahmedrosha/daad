@@ -284,6 +284,10 @@ struct SettingsView: View {
                            "Order them and pick which show. If there are many, the bar scrolls sideways."))
                 }
 
+                Section {
+                    NavigationLink(t("ذاكرة الكيبورد", "Keyboard memory")) { MemoryView() }
+                }
+
                 Section(t("شكل الكيبورد", "Layout")) {
                     Picker(t("ترتيب الحروف العربي", "Arabic letter layout"), selection: $arabicLayout) {
                         Text(t("زي الآيفون", "Like iPhone")).tag("iphone")
@@ -684,5 +688,55 @@ private struct BarItemsView: View {
         } else {
             Image(systemName: item.symbol ?? "questionmark")
         }
+    }
+}
+
+/// How much memory the keyboard uses (it records this itself while you type, with Full Access).
+private struct MemoryView: View {
+    @Environment(\.arabic) private var ar
+    @State private var now = 0.0
+    @State private var peak = 0.0
+    @State private var date: Date?
+
+    private func t(_ arabic: String, _ english: String) -> String { ar ? arabic : english }
+
+    var body: some View {
+        List {
+            Section {
+                row(t("آخر قياس", "Last reading"), now)
+                row(t("أعلى رقم", "Highest"), peak)
+                if let date {
+                    Text(date.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
+                }
+            } footer: {
+                Text(t("الكيبورد بيقيس الرقم ده وإنت بتكتب وكل ما يتقفل، ومحتاج Allow Full Access. اكتب شوية عادي وارجع هنا.",
+                       "The keyboard measures this while you type and each time it closes. It needs Allow Full Access. Type for a while, then come back."))
+            }
+            Section {
+                Button(t("صفّر أعلى رقم", "Reset highest"), role: .destructive) {
+                    SharedSettings.store?.set(0, forKey: MemoryReport.peakKey)
+                    load()
+                }
+            }
+        }
+        .navigationTitle(t("ذاكرة الكيبورد", "Keyboard memory"))
+        .onAppear(perform: load)
+        .refreshable { load() }
+    }
+
+    private func row(_ title: String, _ mb: Double) -> some View {
+        HStack {
+            Text(title)
+            Spacer()
+            Text(mb > 0 ? String(format: "%.0f MB", mb) : "—").monospacedDigit().foregroundStyle(.secondary)
+        }
+    }
+
+    private func load() {
+        let d = SharedSettings.store
+        now = d?.double(forKey: MemoryReport.nowKey) ?? 0
+        peak = d?.double(forKey: MemoryReport.peakKey) ?? 0
+        let ts = d?.double(forKey: MemoryReport.dateKey) ?? 0
+        date = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
     }
 }
