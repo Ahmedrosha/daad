@@ -49,6 +49,9 @@ final class KeyboardViewController: UIInputViewController {
     /// The language of the last letter this keyboard typed. Some apps (WhatsApp) show the keyboard the
     /// new text a moment late, so (ع+En) goes by this until the cursor moves or text is deleted.
     private var typedLanguage: DaadLanguage?
+    /// The last text this keyboard typed and what was before the cursor just then. While the app
+    /// still shows the old text, the keyboard adds this itself (so Shift isn't turned back on).
+    private var pendingInsert: (before: String, text: String)?
     private var blindStrikes = 0
     private var mode: KeyboardMode = .letters
     private var shift: ShiftState = .off
@@ -237,7 +240,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         blindField = false
         blindStrikes = 0
-        typedLanguage = nil
+        typedLanguage = nil; pendingInsert = nil
         lexicon.preload(.arabic)
         lexicon.preload(.english)
         mode = .letters
@@ -302,7 +305,7 @@ final class KeyboardViewController: UIInputViewController {
     /// The cursor was moved in the app (a tap in the text): go by the text around it again.
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
-        typedLanguage = nil
+        typedLanguage = nil; pendingInsert = nil
         reload()
     }
 
@@ -1288,8 +1291,10 @@ final class KeyboardViewController: UIInputViewController {
 
     private func insert(_ text: String) {
         noteTyped(text)
+        let beforeInsert = proxy.documentContextBeforeInput ?? ""
         if plainTyping {
             proxy.insertText(text)
+            pendingInsert = (beforeInsert, text)
             lastCorrection = nil
             if shift == .on { shift = .off }
             checkForBlindField()
@@ -1306,6 +1311,7 @@ final class KeyboardViewController: UIInputViewController {
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
         keepNumbersInOrder(before: text)
         proxy.insertText(text)
+        pendingInsert = (beforeInsert, text)
         lastCorrection = nil
         if shift == .on { shift = .off }
         updateAutoShift()
@@ -1349,7 +1355,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Whether the text field expects a capital letter at the cursor (start of a sentence, a word, …).
     private func capitalizationContext() -> Bool {
         let type = proxy.autocapitalizationType ?? .sentences
-        let before = proxy.documentContextBeforeInput ?? ""
+        let before = textBeforeCursor
         switch type {
         case .none: return false
         case .allCharacters: return true
@@ -1363,6 +1369,14 @@ final class KeyboardViewController: UIInputViewController {
             guard let last = trimmed.last else { return true }
             return ".!?".contains(last)
         }
+    }
+
+    /// The text before the cursor, with what this keyboard just typed added when the app hasn't shown it
+    /// yet (then a letter typed at the start no longer looks like the start of a sentence).
+    private var textBeforeCursor: String {
+        let real = proxy.documentContextBeforeInput ?? ""
+        if let p = pendingInsert, real == p.before { return p.before + p.text }
+        return real
     }
 
     /// Deletes one visible character, together with any invisible direction marks around it.
@@ -1514,7 +1528,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
-        typedLanguage = nil   // after deleting, read the letter before the cursor again
+        typedLanguage = nil; pendingInsert = nil   // after deleting, read the letter before the cursor again
         recordingUndo {
             if isSearching {
                 if !query.isEmpty { query.removeLast() }
@@ -1580,7 +1594,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
         lockedCursorDirection = began ? paragraphIsRightToLeft : nil
         if !began {
-            typedLanguage = nil
+            typedLanguage = nil; pendingInsert = nil
             autoPickLanguage(refresh: false)
             updateAutoShift()
             reload()   // also refreshes the suggestions
