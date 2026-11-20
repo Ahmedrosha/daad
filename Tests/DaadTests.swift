@@ -232,6 +232,12 @@ final class DaadTests: XCTestCase {
         let lexicon = Lexicon()
         _ = lexicon.isKnown("خلصت", language: .arabic)
         _ = lexicon.isKnown("hello", language: .english)
+        // One-time loads (next-word tables) are timed apart from the per-key cost.
+        let firstLoad = milliseconds {
+            _ = lexicon.predictions(previous: "في", beforePrevious: nil, language: .arabic, limit: 3)
+            _ = lexicon.predictions(previous: "in", beforePrevious: nil, language: .english, limit: 3)
+        }
+        print("TIMING next-word tables first load: \(String(format: "%.0f", firstLoad)) ms (once)")
         // Long, mistyped and prefixed words are the slow cases: few or no words start the same way.
         let words = ["والمستشفياتت", "بالاستراتيجيه", "خاصتهمم", "مستشفي", "هنتقابلوا", "internationalizationn", "responsibilty", "zzzqqqxx"]
         var times: [Double] = []
