@@ -759,6 +759,15 @@ private struct MemoryView: View {
 
     private func load() {
         let d = SharedSettings.store
+        if shotScreen == "memory", MemoryReport.log(in: d).isEmpty {   // simulator screenshots only
+            let t = Date().timeIntervalSince1970
+            let sample = ["\(t - 300)|48|0|open, clipboard 12 items / 840 chars", "\(t - 200)|55|130|typing",
+                          "\(t - 120)|74|5230|selection", "\(t - 60)|61|5230|close"]
+            d?.set(sample, forKey: MemoryReport.logKey)
+            d?.set(sample[2], forKey: MemoryReport.peakEventKey)
+            d?.set(74.0, forKey: MemoryReport.peakKey); d?.set(61.0, forKey: MemoryReport.nowKey)
+            d?.set(t - 60, forKey: MemoryReport.dateKey)
+        }
         now = d?.double(forKey: MemoryReport.nowKey) ?? 0
         peak = d?.double(forKey: MemoryReport.peakKey) ?? 0
         let ts = d?.double(forKey: MemoryReport.dateKey) ?? 0
