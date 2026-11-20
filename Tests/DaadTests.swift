@@ -219,4 +219,48 @@ final class DaadTests: XCTestCase {
         c.dualLook = .arabicTop
         XCTAssertEqual(Layouts.build(c).rows.flatMap(\.keys).first { $0.action == .backspace }?.symbol, "delete.right")
     }
+
+    // MARK: Speed (what one key press costs)
+
+    private func milliseconds(_ work: () -> Void) -> Double {
+        let start = CFAbsoluteTimeGetCurrent()
+        work()
+        return (CFAbsoluteTimeGetCurrent() - start) * 1000
+    }
+
+    func testSpeedOfSuggestions() {
+        let lexicon = Lexicon()
+        _ = lexicon.isKnown("خلصت", language: .arabic)
+        _ = lexicon.isKnown("hello", language: .english)
+        // Long, mistyped and prefixed words are the slow cases: few or no words start the same way.
+        let words = ["والمستشفياتت", "بالاستراتيجيه", "خاصتهمم", "مستشفي", "هنتقابلوا", "internationalizationn", "responsibilty", "zzzqqqxx"]
+        var times: [Double] = []
+        for word in words {
+            let chars = Array(word)
+            for n in 1...chars.count {
+                let typed = String(chars[0..<n])
+                let lang = Lexicon.language(of: typed)
+                times.append(milliseconds {
+                    _ = lexicon.rank(typed, language: lang, limit: 3, previous: "في", beforePrevious: nil)
+                    _ = lexicon.autocorrection(for: typed, language: lang)
+                })
+            }
+        }
+        let average = times.reduce(0, +) / Double(times.count)
+        print("TIMING suggestions per key: average \(String(format: "%.2f", average)) ms, worst \(String(format: "%.2f", times.max() ?? 0)) ms over \(times.count) keys")
+        let glide = milliseconds {
+            for _ in 0..<10 { _ = lexicon.glideVocabulary(.arabic, startKeys: ["ا", "ل", "ب"], endKeys: ["ت", "ن", "م"]) }
+        } / 10
+        print("TIMING glide word list: \(String(format: "%.2f", glide)) ms per swipe")
+        XCTAssertLessThan(average, 30)
+    }
+
+    func testCompletionsMatchAFullScan() {
+        let lexicon = Lexicon()
+        XCTAssertTrue(lexicon.rank("hell", language: .english, limit: 3).contains { $0.word == "hello" })
+        XCTAssertTrue(lexicon.rank("مدرس", language: .arabic, limit: 5).contains { $0.word.hasPrefix("مدرس") && $0.kind == .completion })
+        let glide = lexicon.glideVocabulary(.english, startKeys: ["h"], endKeys: ["o"])
+        XCTAssertTrue(glide.contains { $0.word == "hello" })
+        XCTAssertTrue(glide.allSatisfy { $0.word.hasPrefix("h") && $0.word.hasSuffix("o") })
+    }
 }
