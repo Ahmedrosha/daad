@@ -121,6 +121,7 @@ final class KeyView: UIView {
     /// Shows another key in this same view (new letters after Shift or a language change), so the
     /// keyboard doesn't build all its keys again for every letter.
     func update(key newKey: Key) {
+        guard newKey != key else { return }     // most keys don't change (e.g. Shift only touches letters)
         key = newKey
         apply(newKey)
         setNeedsLayout()

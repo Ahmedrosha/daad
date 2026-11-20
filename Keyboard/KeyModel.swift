@@ -41,7 +41,7 @@ enum KeyStyle {
     case accent
 }
 
-struct Key {
+struct Key: Equatable {
     var action: KeyAction
     var label: String
     var symbol: String? = nil

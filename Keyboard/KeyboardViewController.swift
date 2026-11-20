@@ -120,6 +120,7 @@ final class KeyboardViewController: UIInputViewController {
         // Tells the app which language is being typed, so it lays the text out the right way.
         primaryLanguage = typingLanguageCode
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
+        lexicon.onLoad = { [weak self] in self?.scheduleSuggestions() }   // word lists arrive in the background
         clipboard.configure(store: store)
 
         keyboardView.delegate = self
@@ -213,6 +214,9 @@ final class KeyboardViewController: UIInputViewController {
         access = state
         Access.save(state, to: .standard)
         applyAccess()
+        // StoreKit is asked once per launch of the keyboard, and again only while it is still locked.
+        guard !storeKitChecked || !Access.status(state).unlocked else { return }
+        storeKitChecked = true
         Task { [weak self] in
             guard let fromStore = await Access.fromStoreKit() else { return }
             await MainActor.run {
@@ -223,6 +227,8 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
     }
+
+    private var storeKitChecked = false
 
     private func applyAccess() {
         let status = Access.status(access)
@@ -306,19 +312,27 @@ final class KeyboardViewController: UIInputViewController {
     /// The cursor was moved in the app (a tap in the text): go by the text around it again.
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
+        // The cursor also moves when this keyboard types or deletes: that is not the user moving it, and
+        // the keys must not be refreshed under fast-typing fingers because of it.
+        guard Date().timeIntervalSince(lastOwnEdit) > 0.25, lockedCursorDirection == nil else { return }
         typedLanguage = nil; pendingInsert = nil
         scheduleReload()
         if hasSelection { recordMemory("selection", always: false) }
     }
 
     private var pendingReload: DispatchWorkItem?
+    /// When this keyboard last changed the text itself.
+    private var lastOwnEdit = Date.distantPast
+    /// Until then, a burst of changes made by the keyboard (delete all, undo) is answered once at the end.
+    private var bulkEditUntil = Date.distantPast
+    private var lastClipboardCheck = Date.distantPast
 
     /// Dragging the cursor or selection handles fires many changes a second: wait until it settles
     /// (a tenth of a second) and update the keys once.
     private func scheduleReload() {
         pendingReload?.cancel()
         let work = DispatchWorkItem { [weak self] in
-            guard let self else { return }
+            guard let self, self.lockedCursorDirection == nil else { return }
             self.updateAutoShift()
             self.reload()
         }
@@ -331,11 +345,17 @@ final class KeyboardViewController: UIInputViewController {
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
-        if hasFullAccess { clipboard.captureIfChanged() }
+        // Asking iOS about the pasteboard on every letter is slow: every couple of seconds is enough
+        // (it is also checked when the keyboard opens and when the clipboard screen opens).
+        let now = Date()
+        if hasFullAccess, now.timeIntervalSince(lastClipboardCheck) > 2 {
+            lastClipboardCheck = now
+            clipboard.captureIfChanged()
+        }
         // While the space bar moves the cursor, don't rebuild the keys (e.g. auto-Shift at a sentence start):
         // rebuilding cancels the touch and ends the cursor swipe. Catch up when the finger lifts.
         guard lockedCursorDirection == nil else { return }
-        if hasSelection { scheduleReload(); return }
+        if now < bulkEditUntil || hasSelection { scheduleReload(); return }
         updateAutoShift()
         reload()
     }
@@ -829,7 +849,18 @@ final class KeyboardViewController: UIInputViewController {
         lexicon.blockOffensive = settings.bool(.blockOffensive)
         suggestionBar.setInputMode(inputMode)
         suggestionBar.setArrowsOn(settings.bool(.arrowRow))
-        updateSuggestions()
+        scheduleSuggestions()
+    }
+
+    private var pendingSuggestions: DispatchWorkItem?
+
+    /// Suggestions are worked out once, a moment after the last key: several keys in a row (fast typing,
+    /// a held delete, the app echoing the change) cost one look-up instead of one each.
+    private func scheduleSuggestions() {
+        pendingSuggestions?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.updateSuggestions() }
+        pendingSuggestions = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.035, execute: work)
     }
 
     private func updateHeight() {
@@ -904,6 +935,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Runs a change and remembers it, so "Undo" can reverse it. Letters typed in a row undo as one word.
     private func recordingUndo(_ body: () -> Void) {
+        lastOwnEdit = Date()
         guard !isUndoing else { body(); return }
         let old = Array(proxy.documentContextBeforeInput ?? "")
         body()
@@ -925,6 +957,7 @@ final class KeyboardViewController: UIInputViewController {
     private func undoLastEdit() -> Bool {
         guard let record = undoStack.popLast() else { return false }
         isUndoing = true
+        if record.added.count + record.removed.count > 40 { bulkEditUntil = Date().addingTimeInterval(0.6) }
         for _ in 0..<record.added.count { proxy.deleteBackward() }
         if !record.removed.isEmpty { proxy.insertText(record.removed) }
         isUndoing = false
@@ -996,6 +1029,7 @@ final class KeyboardViewController: UIInputViewController {
     /// cursor to the end, then back to the start chunk by chunk, and finally puts it back where it was.
     /// Calls back with the text and the cursor's place in it.
     private func readAllText(_ done: @escaping (_ text: String, _ cursor: Int) -> Void) {
+        bulkEditUntil = Date().addingTimeInterval(6)    // the cursor walk below: no refresh per step
         var forward = 0, back = 0, collected = ""
         func toEnd(_ step: Int) {
             let after = proxy.documentContextAfterInput ?? ""
@@ -1009,6 +1043,8 @@ final class KeyboardViewController: UIInputViewController {
             guard !before.isEmpty, step < 80 else {
                 let cursor = back - forward
                 proxy.adjustTextPosition(byCharacterOffset: cursor)   // back to where it was
+                bulkEditUntil = Date().addingTimeInterval(0.3)
+                lastOwnEdit = Date()
                 done(collected, cursor)
                 return
             }
@@ -1037,6 +1073,8 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             guard !text.isEmpty else { report(arabic ? "الخانة فاضية" : "The box is empty"); return }
             self.proxy.adjustTextPosition(byCharacterOffset: text.count - cursor)   // to the end
+            self.bulkEditUntil = Date().addingTimeInterval(0.8)
+            self.lastOwnEdit = Date()
             for _ in 0..<text.count { self.proxy.deleteBackward() }
             self.undoStack.append(EditRecord(removed: text, added: ""))   // Undo puts it all back
             self.recordMemory("delete all")
@@ -1354,7 +1392,7 @@ final class KeyboardViewController: UIInputViewController {
         checkForBlindField()
         reload()
         insertsSinceMemoryCheck += 1
-        if insertsSinceMemoryCheck >= 25 { insertsSinceMemoryCheck = 0; recordMemory("typing") }
+        if insertsSinceMemoryCheck >= 100 { insertsSinceMemoryCheck = 0; recordMemory("typing") }
     }
 
     /// Typing "2 4" in right-to-left text shows "4 2". When a digit follows "digit + space", an invisible
@@ -1539,7 +1577,8 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 case .down: keyboardView(view, moveCursorLines: 1)
                 }
                 lastCorrection = nil
-                updateSuggestions()
+                typedLanguage = nil; pendingInsert = nil    // the cursor moved: go by the text around it
+                scheduleReload()
             case .forwardDelete:
                 guard let after = proxy.documentContextAfterInput, let next = after.first else { return }
                 proxy.adjustTextPosition(byCharacterOffset: next.utf16.count)

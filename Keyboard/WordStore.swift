@@ -10,6 +10,9 @@ final class WordList {
     private var normStarts: [Int32] = [0]
     private(set) var counts: [Int32] = []
     private var slots: [Int32] = []        // open-addressing hash: word index + 1, 0 = empty
+    private var byNorm: [Int32] = []       // word indexes ordered by loose form, for prefix look-ups
+    private var firstKey: [UInt16] = []    // first and last keyboard letter of each word (glide typing)
+    private var lastKey: [UInt16] = []
     private(set) var top = 1
 
     var count: Int { counts.count }
@@ -24,7 +27,84 @@ final class WordList {
 
     /// How common the word is, or nil when it isn't in the list.
     func count(of word: String) -> Int? {
-        index(of: Array(word.utf8)).map { Int(counts[$0]) }
+        var w = word
+        return w.withUTF8 { index(of: $0) }.map { Int(counts[$0]) }
+    }
+
+    // MARK: Look-ups by prefix (no scan of the whole list)
+
+    private func compareNorm(_ i: Int, with p: [UInt8], prefixOnly: Bool) -> Int {
+        let s = Int(normStarts[i]), n = Int(normStarts[i + 1]) - s
+        let m = min(n, p.count)
+        for k in 0 ..< m where norm[s + k] != p[k] { return norm[s + k] < p[k] ? -1 : 1 }
+        if n < p.count { return -1 }
+        return prefixOnly || n == p.count ? 0 : 1
+    }
+
+    /// Positions in `byNorm` of every word whose loose form starts with these bytes.
+    private func prefixRange(_ p: [UInt8]) -> Range<Int> {
+        var lo = 0, hi = byNorm.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if compareNorm(Int(byNorm[mid]), with: p, prefixOnly: true) < 0 { lo = mid + 1 } else { hi = mid }
+        }
+        let start = lo
+        hi = byNorm.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if compareNorm(Int(byNorm[mid]), with: p, prefixOnly: true) <= 0 { lo = mid + 1 } else { hi = mid }
+        }
+        return start ..< lo
+    }
+
+    /// The most frequent words whose loose form starts with `prefix` (word indexes, most frequent first).
+    func indexes(withPrefix prefix: String, limit: Int) -> [Int] {
+        let p = Array(prefix.utf8)
+        guard !p.isEmpty else { return [] }
+        let range = prefixRange(p)
+        guard !range.isEmpty else { return [] }
+        // A smaller index means a more frequent word. Keep the `limit` smallest.
+        if range.count <= limit { return byNorm[range].map { Int($0) }.sorted() }
+        var best: [Int32] = []
+        best.reserveCapacity(limit + 1)
+        var worst = Int32.max
+        for pos in range {
+            let i = byNorm[pos]
+            if best.count < limit {
+                best.append(i)
+                if best.count == limit { best.sort(); worst = best[limit - 1] }
+            } else if i < worst {
+                let at = best.firstIndex { $0 > i } ?? limit - 1
+                best.insert(i, at: at)
+                best.removeLast()
+                worst = best[limit - 1]
+            }
+        }
+        if best.count < limit { best.sort() }
+        return best.map { Int($0) }
+    }
+
+    /// Words whose loose form is exactly `form` (word indexes).
+    func indexes(withNormalized form: String) -> [Int] {
+        let p = Array(form.utf8)
+        guard !p.isEmpty else { return [] }
+        return byNorm[prefixRange(p)].map { Int($0) }.filter { Int(normStarts[$0 + 1] - normStarts[$0]) == p.count }
+    }
+
+    /// Words that start and end on these keys (word indexes), for glide typing.
+    func indexes(firstKeys: Set<UInt16>, lastKeys: Set<UInt16>) -> [Int] {
+        var out: [Int] = []
+        for i in 0 ..< count where firstKeys.contains(firstKey[i]) && lastKeys.contains(lastKey[i]) { out.append(i) }
+        return out
+    }
+
+    /// Call once after loading (and after `sortByCount`).
+    func buildIndexes() {
+        byNorm = (0 ..< Int32(count)).sorted { a, b in
+            let sa = Int(normStarts[Int(a)]), ea = Int(normStarts[Int(a) + 1])
+            let sb = Int(normStarts[Int(b)]), eb = Int(normStarts[Int(b) + 1])
+            return norm[sa ..< ea].lexicographicallyPrecedes(norm[sb ..< eb])
+        }
     }
 
     /// Whether the loose form of word `i` starts with these UTF-8 bytes.
@@ -76,14 +156,17 @@ final class WordList {
     func sortByCount() {
         let order = (0 ..< count).sorted { counts[$0] != counts[$1] ? counts[$0] > counts[$1] : $0 < $1 }
         var b: [UInt8] = [], s: [Int32] = [0], nb: [UInt8] = [], ns: [Int32] = [0], c: [Int32] = []
+        var fk: [UInt16] = [], lk: [UInt16] = []
+        fk.reserveCapacity(count); lk.reserveCapacity(count)
         b.reserveCapacity(bytes.count); nb.reserveCapacity(norm.count)
         s.reserveCapacity(count + 1); ns.reserveCapacity(count + 1); c.reserveCapacity(count)
         for i in order {
             b.append(contentsOf: bytes[Int(starts[i]) ..< Int(starts[i + 1])]); s.append(Int32(b.count))
             nb.append(contentsOf: norm[Int(normStarts[i]) ..< Int(normStarts[i + 1])]); ns.append(Int32(nb.count))
             c.append(counts[i])
+            fk.append(firstKey[i]); lk.append(lastKey[i])
         }
-        bytes = b; starts = s; norm = nb; normStarts = ns; counts = c
+        bytes = b; starts = s; norm = nb; normStarts = ns; counts = c; firstKey = fk; lastKey = lk
         slots = [Int32](repeating: 0, count: slots.count)
         for i in 0 ..< count { insertSlot(i) }
     }
@@ -101,7 +184,11 @@ final class WordList {
         if (count + 1) * 2 > slots.count { grow() }
         bytes.append(contentsOf: word)
         starts.append(Int32(bytes.count))
-        let loose = Lexicon.normalize(String(decoding: word, as: UTF8.self))
+        let text = String(decoding: word, as: UTF8.self)
+        let loose = Lexicon.normalize(text)
+        let letters = GlideDecoder.keyLetters(of: text, language: .arabic)
+        firstKey.append(letters.first.map(WordList.keyCode) ?? 0)
+        lastKey.append(letters.last.map(WordList.keyCode) ?? 0)
         norm.append(contentsOf: loose.utf8)
         normStarts.append(Int32(norm.count))
         counts.append(Int32(clamping: n))
@@ -112,6 +199,13 @@ final class WordList {
     private func grow() {
         slots = [Int32](repeating: 0, count: slots.count * 2)
         for i in 0 ..< count { insertSlot(i) }
+    }
+
+    /// A keyboard letter as a small number (0 = not a single simple letter).
+    static func keyCode(_ ch: Character) -> UInt16 {
+        let scalars = ch.unicodeScalars
+        guard scalars.count == 1, let v = scalars.first?.value, v <= 0xFFFF else { return 0 }
+        return UInt16(v)
     }
 
     // MARK: Hashing
@@ -129,7 +223,7 @@ final class WordList {
         slots[j] = Int32(i + 1)
     }
 
-    private func index(of word: [UInt8]) -> Int? {
+    private func index<C: Collection>(of word: C) -> Int? where C.Element == UInt8 {
         guard !slots.isEmpty else { return nil }
         let mask = slots.count - 1
         var j = WordList.hash(word) & mask

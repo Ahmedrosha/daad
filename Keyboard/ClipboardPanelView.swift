@@ -5,6 +5,9 @@ final class ClipboardStore {
     private static let itemsKey = "clipboardHistory"
     private static let changeKey = "clipboardChangeCount"
     private static let limit = 30
+    /// Longer copies (a whole document) are not kept in the history: 30 of them would sit in the
+    /// keyboard's tight memory. They can still be pasted with the Paste button.
+    private static let maxLength = 10_000
 
     private var store: UserDefaults = .standard
     private(set) var items: [String] = []
@@ -27,6 +30,10 @@ final class ClipboardStore {
     func configure(store: UserDefaults) {
         self.store = store
         items = store.stringArray(forKey: ClipboardStore.itemsKey) ?? []
+        if items.contains(where: { $0.utf16.count > ClipboardStore.maxLength }) {
+            items.removeAll { $0.utf16.count > ClipboardStore.maxLength }
+            save()
+        }
     }
 
     /// Reads the pasteboard only when its content changed, so iOS doesn't show the paste banner every time.
@@ -35,7 +42,7 @@ final class ClipboardStore {
         let change = board.changeCount
         guard change != store.integer(forKey: ClipboardStore.changeKey) else { return }
         store.set(change, forKey: ClipboardStore.changeKey)
-        guard board.hasStrings, let text = board.string,
+        guard board.hasStrings, let text = board.string, text.utf16.count <= ClipboardStore.maxLength,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
         items.removeAll { $0 == text }
         items.insert(text, at: 0)
