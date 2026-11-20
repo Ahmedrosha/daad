@@ -47,9 +47,17 @@ jobs:
             mkdir -p "$(dirname "$PL")"
             /usr/libexec/PlistBuddy -c "Add :pinnedTexts array" -c "Add :pinnedTexts:0 string 'My address: 12 Nile St, Cairo'" \
               -c "Add :pinnedTexts:1 string 'عنواني: ١٢ شارع النيل، القاهرة'" "$PL" || true
+            NOW=$(date +%s)
+            /usr/libexec/PlistBuddy -c "Add :diagMemoryNowMB real 61" -c "Add :diagMemoryPeakMB real 74" -c "Add :diagMemoryDate real $NOW" \
+              -c "Add :diagMemoryPeakEvent string '$((NOW-120))|74|5230|selection'" \
+              -c "Add :diagMemoryLog array" \
+              -c "Add :diagMemoryLog:0 string '$((NOW-300))|48|0|open, clipboard 12 items / 840 chars'" \
+              -c "Add :diagMemoryLog:1 string '$((NOW-200))|55|130|typing'" \
+              -c "Add :diagMemoryLog:2 string '$((NOW-120))|74|5230|selection'" \
+              -c "Add :diagMemoryLog:3 string '$((NOW-60))|61|5230|close'" "$PL" || true
           fi
           for LANG in ar en; do
-            for SHOT in home settings shortcuts pinned bar; do
+            for SHOT in settings memory; do
               xcrun simctl terminate "$SIM" com.daad.keyboard || true
               xcrun simctl launch "$SIM" com.daad.keyboard -appLanguage $LANG -shot $SHOT
               sleep 7

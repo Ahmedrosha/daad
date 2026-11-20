@@ -68,7 +68,7 @@ struct DaadApp: App {
     }
 }
 
-/// Simulator screenshots only: `-shot settings|shortcuts|pinned|bar` opens that screen at launch.
+/// Simulator screenshots only: `-shot settings|shortcuts|pinned|bar|memory` opens that screen at launch.
 let shotScreen: String? = {
     #if DEBUG
     let args = ProcessInfo.processInfo.arguments
@@ -160,6 +160,7 @@ struct SettingsView: View {
     @State private var shotShortcuts = shotScreen == "shortcuts"
     @State private var shotPinned = shotScreen == "pinned"
     @State private var shotBar = shotScreen == "bar"
+    @State private var shotMemory = shotScreen == "memory"
     @AppStorage("appLanguage") private var appLanguage = defaultAppLanguage
 
     // Typing
@@ -420,6 +421,7 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $shotShortcuts) { ShortcutsView() }
             .navigationDestination(isPresented: $shotPinned) { PinnedTextsView() }
             .navigationDestination(isPresented: $shotBar) { BarItemsView() }
+            .navigationDestination(isPresented: $shotMemory) { MemoryView() }
             .confirmationDialog(t("تمسح كل الكلمات اللي اتعلمها الكيبورد؟", "Clear all learned words?"),
                                 isPresented: $confirmClear, titleVisibility: .visible) {
                 Button(t("مسح", "Clear"), role: .destructive) {
