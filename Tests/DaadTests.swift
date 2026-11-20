@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 /// Checks for the parts that broke before or are easy to break: brackets, layouts, numbers, words.
 final class DaadTests: XCTestCase {
@@ -251,6 +252,48 @@ final class DaadTests: XCTestCase {
         step("glide vocabulary") {
             _ = lexicon.glideVocabulary(.arabic)
             _ = lexicon.glideVocabulary(.english)
+        }
+    }
+
+    func testMemoryOfScreens() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.isHidden = false
+        var last = footprintMB()
+        func measure(_ name: String, _ make: () -> UIView) {
+            autoreleasepool {
+                let v = make()
+                v.frame = CGRect(x: 0, y: 0, width: 393, height: 300)
+                window.addSubview(v)
+                v.setNeedsLayout(); v.layoutIfNeeded()
+                _ = UIGraphicsImageRenderer(bounds: v.bounds).image { _ in v.drawHierarchy(in: v.bounds, afterScreenUpdates: true) }
+                let now = footprintMB()
+                print("MEMORY screen \(name): +\(String(format: "%.1f", now - last)) MB (total \(String(format: "%.1f", now)) MB)")
+                last = now
+            }
+        }
+        measure("keys (arabic)") {
+            let k = KeyboardView()
+            k.configure(rows: Layouts.build(context(.arabic)).rows, maxUnits: 11.6, theme: .make(dark: true))
+            return k
+        }
+        measure("keys (english)") {
+            let k = KeyboardView()
+            k.configure(rows: Layouts.build(context(.english)).rows, maxUnits: 10, theme: .make(dark: true))
+            return k
+        }
+        measure("suggestion bar") { SuggestionBarView() }
+        measure("emoji") { EmojiPanelView() }
+        measure("clipboard") { ClipboardPanelView() }
+        measure("tools") { ToolsPanelView() }
+        measure("calculator") { CalculatorPanelView() }
+        measure("settings") { SettingsPanelView() }
+        measure("search") { SearchPanelView() }
+        measure("look") { LookPanelView() }
+        measure("edit") { EditPanelView() }
+        measure("whole keyboard") {
+            let vc = KeyboardViewController()
+            vc.loadViewIfNeeded()
+            return vc.view
         }
     }
 }
