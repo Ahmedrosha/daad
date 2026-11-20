@@ -288,4 +288,20 @@ final class DaadTests: XCTestCase {
         }
         XCTAssertFalse(later.isEmpty, "next-word suggestions arrive once the tables are in")
     }
+
+    func testEgyptianWordsAreLeftAlone() {
+        let lexicon = Lexicon()
+        let url = Bundle(for: Lexicon.self).url(forResource: "words_eg", withExtension: "txt")!
+        let lines = (try? String(contentsOf: url, encoding: .utf8))?.split(whereSeparator: \.isNewline) ?? []
+        var changed: [String] = []
+        for line in lines {
+            let word = String(line.split(separator: " ")[0])
+            if let fix = lexicon.autocorrection(for: word, language: .arabic) { changed.append("\(word)→\(fix)") }
+        }
+        print("EGYPT list words corrected: \(changed.count) of \(lines.count): \(changed.prefix(40).joined(separator: " "))")
+        let everyday = ["ازيك", "عامل", "ايه", "النهارده", "بكرة", "امبارح", "دلوقتي", "كده", "كدة", "ليه", "فين", "مين", "عشان", "علشان", "خلاص", "ماشي", "طب", "طيب", "اهو", "بقى", "بقا", "لسه", "لسة", "برضه", "برضو", "اوي", "قوي", "شوية", "حاجة", "هعمل", "هعملها", "عملتها", "مبعرفش", "معرفش", "مش", "مفيش", "فيه", "عايز", "عاوز", "هتيجي", "جاي", "رايح", "هنروح", "متقلقش", "ماتقلقش", "يلا", "ياعم", "ياجماعة", "بتاعي", "بتاعك", "بتاعتي", "بتوعنا", "ازاي", "اللي", "إللي", "دي", "ده", "دول", "هناك", "هنا", "خالص", "قوللي", "قولي", "اتصلت", "هكلمك", "كلمني", "وحشتني", "حبيبي", "ياريت", "اكيد", "تمام", "ماشيه", "مبقتش", "مكنتش", "هيبقى", "بيقول", "بتعمل", "بنكتب", "متزعلش", "عيالي", "الولاد", "شغلي", "الشغل", "فلوس", "اشتريت", "هشتري", "روحت", "جيت", "هاجي", "مشيت", "نمت", "صحيت", "اكلت", "هاكل", "شربت"]
+        var fixes: [String] = []
+        for w in everyday { if let f = lexicon.autocorrection(for: w, language: .arabic) { fixes.append("\(w)→\(f)") } }
+        print("EGYPT everyday corrected: \(fixes.count) of \(everyday.count): \(fixes.joined(separator: " "))")
+    }
 }
