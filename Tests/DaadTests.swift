@@ -269,4 +269,23 @@ final class DaadTests: XCTestCase {
         XCTAssertTrue(glide.contains { $0.word == "hello" })
         XCTAssertTrue(glide.allSatisfy { $0.word.hasPrefix("h") && $0.word.hasSuffix("o") })
     }
+
+    func testNextWordTablesLoadInBackgroundOnThePhone() {
+        Lexicon.tablesInBackground = true
+        defer { Lexicon.tablesInBackground = false }
+        let lexicon = Lexicon()
+        _ = lexicon.isKnown("hello", language: .english)
+        var first: [String] = []
+        let asked = milliseconds { first = lexicon.predictions(previous: "in", beforePrevious: nil, language: .english, limit: 3) }
+        print("TIMING next-word ask while the tables load: \(String(format: "%.1f", asked)) ms")
+        XCTAssertLessThan(asked, 100, "asking must not wait for the tables")
+        _ = first
+        let deadline = Date().addingTimeInterval(30)
+        var later: [String] = []
+        while later.isEmpty && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
+            later = lexicon.predictions(previous: "in", beforePrevious: nil, language: .english, limit: 3)
+        }
+        XCTAssertFalse(later.isEmpty, "next-word suggestions arrive once the tables are in")
+    }
 }

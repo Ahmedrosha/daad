@@ -104,6 +104,7 @@ final class Lexicon {
     /// Reads a word list on a background thread so the first letter typed doesn't wait for it
     /// (the Arabic list has 100,000 words). Call on the main thread; results are stored on it too.
     func preload(_ language: DaadLanguage) {
+        preloadNextTables(language)
         guard lists[language] == nil, !preloading.contains(language) else { return }
         preloading.insert(language)
         DispatchQueue.global(qos: .userInitiated).async {
@@ -468,12 +469,35 @@ final class Lexicon {
 
     // MARK: Next-word prediction
 
+    /// On the phone the next-word tables are read on a background thread (about a second): the keyboard
+    /// never stops for them, and next-word suggestions start once they are in. Tests read them on the spot.
+    static var tablesInBackground = NSClassFromString("XCTestCase") == nil
+    private var loadingTables: Set<DaadLanguage> = []
+
     private func ensureNextTables(_ language: DaadLanguage) {
         guard nextTables[language] == nil else { return }
-        let names = language == .arabic ? ["next_eg", "next_ar"] : ["next_en"]   // Egyptian first: it wins ties
-        nextTables[language] = names.map {
-            PhraseTable(file: Bundle(for: Lexicon.self).url(forResource: $0, withExtension: "txt"))
+        if Lexicon.tablesInBackground { preloadNextTables(language); return }
+        nextTables[language] = Lexicon.loadNextTables(language)
+    }
+
+    /// Call on the main thread; the tables are stored on it too.
+    private func preloadNextTables(_ language: DaadLanguage) {
+        guard nextTables[language] == nil, !loadingTables.contains(language) else { return }
+        loadingTables.insert(language)
+        DispatchQueue.global(qos: .userInitiated).async {
+            let tables = Lexicon.loadNextTables(language)
+            DispatchQueue.main.async {
+                self.loadingTables.remove(language)
+                guard self.nextTables[language] == nil else { return }
+                self.nextTables[language] = tables
+                self.invalidateCache()
+            }
         }
+    }
+
+    private static func loadNextTables(_ language: DaadLanguage) -> [PhraseTable] {
+        let names = language == .arabic ? ["next_eg", "next_ar"] : ["next_en"]   // Egyptian first: it wins ties
+        return names.map { PhraseTable(file: Bundle(for: Lexicon.self).url(forResource: $0, withExtension: "txt")) }
     }
 
     /// Likely next words after a context, from every table (Egyptian first), without repeats.
