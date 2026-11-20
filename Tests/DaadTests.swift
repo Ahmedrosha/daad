@@ -296,4 +296,35 @@ final class DaadTests: XCTestCase {
             return vc.view
         }
     }
+
+    func testMemoryWhileTyping() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.isHidden = false
+        let vc = KeyboardViewController()
+        vc.loadViewIfNeeded()
+        vc.view.frame = CGRect(x: 0, y: 552, width: 393, height: 300)
+        window.addSubview(vc.view)
+        vc.viewWillAppear(false)
+        vc.view.layoutIfNeeded()
+        let dummy = KeyboardView()
+        let words = ["hello", "ازيك", "the", "خلصت", "meeting", "بكرة", "ok", "تمام"]
+        var start = footprintMB()
+        for round in 1...6 {
+            autoreleasepool {
+                for _ in 0..<50 {
+                    for w in words {
+                        for ch in w { vc.keyboardView(dummy, didTap: .character(String(ch))) }
+                        vc.keyboardView(dummy, didTap: .space)
+                    }
+                    vc.keyboardView(dummy, didTap: .shift)
+                    vc.keyboardViewSwitchLanguage(dummy, forward: true)
+                    vc.keyboardViewDeleteBackward(dummy, word: false)
+                }
+                vc.view.layoutIfNeeded()
+            }
+            let now = footprintMB()
+            print("MEMORY typing round \(round): +\(String(format: "%.1f", now - start)) MB (total \(String(format: "%.1f", now)) MB)")
+            if round == 1 { start = now }
+        }
+    }
 }
