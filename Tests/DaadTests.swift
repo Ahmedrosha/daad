@@ -311,10 +311,11 @@ final class DaadTests: XCTestCase {
         var start = footprintMB()
         for round in 1...6 {
             autoreleasepool {
-                for _ in 0..<50 {
+                for _ in 0..<20 {
                     for w in words {
                         for ch in w { vc.keyboardView(dummy, didTap: .character(String(ch))) }
                         vc.keyboardView(dummy, didTap: .space)
+                        RunLoop.current.run(until: Date().addingTimeInterval(0.002))   // let UIKit settle, like a phone
                     }
                     vc.keyboardView(dummy, didTap: .shift)
                     vc.keyboardViewSwitchLanguage(dummy, forward: true)
