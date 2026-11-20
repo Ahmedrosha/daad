@@ -697,8 +697,23 @@ private struct MemoryView: View {
     @State private var now = 0.0
     @State private var peak = 0.0
     @State private var date: Date?
+    @State private var peakEntry: MemoryReport.Entry?
+    @State private var log: [MemoryReport.Entry] = []
 
     private func t(_ arabic: String, _ english: String) -> String { ar ? arabic : english }
+
+    private func entryRow(_ e: MemoryReport.Entry) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(e.event.isEmpty ? "—" : e.event).font(.callout)
+                Spacer()
+                Text(String(format: "%.0f MB", e.mb)).monospacedDigit().bold()
+            }
+            Text("\(e.date.formatted(date: .omitted, time: .standard)) · \(t("طول النص", "text")) \(e.textLength)")
+                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
+        }
+        .environment(\.layoutDirection, .leftToRight)
+    }
 
     var body: some View {
         List {
@@ -712,9 +727,17 @@ private struct MemoryView: View {
                 Text(t("الكيبورد بيقيس الرقم ده وإنت بتكتب وكل ما يتقفل، ومحتاج Allow Full Access. اكتب شوية عادي وارجع هنا.",
                        "The keyboard measures this while you type and each time it closes. It needs Allow Full Access. Type for a while, then come back."))
             }
+            if let peakEntry {
+                Section(t("أعلى رقم حصل وقت", "Highest happened at")) { entryRow(peakEntry) }
+            }
+            if !log.isEmpty {
+                Section(t("آخر القراءات (الأحدث فوق)", "Recent readings (newest first)")) {
+                    ForEach(Array(log.reversed().enumerated()), id: \.offset) { _, e in entryRow(e) }
+                }
+            }
             Section {
-                Button(t("صفّر أعلى رقم", "Reset highest"), role: .destructive) {
-                    SharedSettings.store?.set(0, forKey: MemoryReport.peakKey)
+                Button(t("امسح القراءات", "Clear readings"), role: .destructive) {
+                    MemoryReport.reset(in: SharedSettings.store)
                     load()
                 }
             }
@@ -738,5 +761,7 @@ private struct MemoryView: View {
         peak = d?.double(forKey: MemoryReport.peakKey) ?? 0
         let ts = d?.double(forKey: MemoryReport.dateKey) ?? 0
         date = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
+        peakEntry = MemoryReport.peakEntry(in: d)
+        log = MemoryReport.log(in: d)
     }
 }

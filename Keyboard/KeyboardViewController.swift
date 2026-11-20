@@ -256,6 +256,7 @@ final class KeyboardViewController: UIInputViewController {
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
         updateBackgroundImage()
         loadAccess()
+        recordMemory("open, clipboard \(clipboard.items.count) items / \(clipboard.items.reduce(0) { $0 + $1.count }) chars")
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -283,7 +284,7 @@ final class KeyboardViewController: UIInputViewController {
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         lexicon.flush()
-        recordMemory()
+        recordMemory("close")
     }
 
     /// iOS holds back touches near the bottom edge (home-indicator gesture), so a long press on the
@@ -307,6 +308,7 @@ final class KeyboardViewController: UIInputViewController {
         super.selectionDidChange(textInput)
         typedLanguage = nil; pendingInsert = nil
         scheduleReload()
+        if hasSelection { recordMemory("selection", always: false) }
     }
 
     private var pendingReload: DispatchWorkItem?
@@ -358,6 +360,7 @@ final class KeyboardViewController: UIInputViewController {
                 self.recordingUndo { self.textDocumentProxy.insertText(text) }
                 self.feedback(for: .character(text))
                 self.reload()
+                self.recordMemory("paste \(text.count) chars")
             } else if board.hasImages || board.contains(pasteboardTypes: ["com.compuserve.gif"]) {
                 // Keyboards can only type text; a GIF or picture has to be pasted by the app itself.
                 self.suggestionBar.flash(arabic ? "اضغط مطوّل في خانة الكتابة واختار لصق (Paste)"
@@ -468,6 +471,7 @@ final class KeyboardViewController: UIInputViewController {
 
     private func showPanel(_ newPanel: Panel) {
         panel = newPanel
+        defer { if newPanel != .keys { recordMemory("panel \(newPanel)") } }
         let theme = currentTheme
         let arabic = language == .arabic
         translateWork?.cancel()
@@ -1019,10 +1023,11 @@ final class KeyboardViewController: UIInputViewController {
     private func copyAllText(_ report: @escaping (String) -> Void) {
         let arabic = language == .arabic
         guard hasFullAccess else { report(arabic ? "محتاج Allow Full Access" : "Needs Allow Full Access"); return }
-        readAllText { text, _ in
+        readAllText { [weak self] text, _ in
             guard !text.isEmpty else { report(arabic ? "الخانة فاضية" : "The box is empty"); return }
             UIPasteboard.general.string = text
             report(arabic ? "اتنسخ الكل ✓" : "Copied all ✓")
+            self?.recordMemory("copy all")
         }
     }
 
@@ -1034,6 +1039,7 @@ final class KeyboardViewController: UIInputViewController {
             self.proxy.adjustTextPosition(byCharacterOffset: text.count - cursor)   // to the end
             for _ in 0..<text.count { self.proxy.deleteBackward() }
             self.undoStack.append(EditRecord(removed: text, added: ""))   // Undo puts it all back
+            self.recordMemory("delete all")
             self.updateAutoShift()
             self.reload()
             report(arabic ? "اتمسح الكل. ترجّعه من تعديل النص ← تراجع" : "Deleted all. Bring it back with Text editing → Undo")
@@ -1236,19 +1242,30 @@ final class KeyboardViewController: UIInputViewController {
 
     private var insertsSinceMemoryCheck = 0
 
-    /// Saves the keyboard's memory use for the app's Settings → Keyboard memory (needs Full Access).
-    private func recordMemory() {
+    private var lastMemoryRecord = Date.distantPast
+
+    /// Saves the keyboard's memory use, with what it was doing, for the app's Settings → Keyboard
+    /// memory (needs Full Access). Frequent events (selection) are kept to one reading a second.
+    private func recordMemory(_ event: String, always: Bool = true) {
         guard hasFullAccess, let group = SharedSettings.store else { return }
-        MemoryReport.record(in: group)
+        let now = Date()
+        guard always || now.timeIntervalSince(lastMemoryRecord) >= 1 else { return }
+        lastMemoryRecord = now
+        let proxy = textDocumentProxy
+        let length = (proxy.documentContextBeforeInput?.count ?? 0) + (proxy.selectedText?.count ?? 0)
+            + (proxy.documentContextAfterInput?.count ?? 0)
+        MemoryReport.record(in: group, event: event, textLength: length)
     }
 
 
     /// iOS gives keyboards little memory: when it runs short, drop everything that can be loaded again.
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
+        recordMemory("memory warning")
         // (ع+En) types both languages, so it keeps both word lists.
         lexicon.trim(keeping: inputMode == .dual ? [.arabic, .english] : [language])
         URLCache.shared.removeAllCachedResponses()
+        recordMemory("after cleanup")
     }
 
     // MARK: Plain typing (passwords, codes, e-mail, Remote Desktop)
@@ -1337,7 +1354,7 @@ final class KeyboardViewController: UIInputViewController {
         checkForBlindField()
         reload()
         insertsSinceMemoryCheck += 1
-        if insertsSinceMemoryCheck >= 25 { insertsSinceMemoryCheck = 0; recordMemory() }
+        if insertsSinceMemoryCheck >= 25 { insertsSinceMemoryCheck = 0; recordMemory("typing") }
     }
 
     /// Typing "2 4" in right-to-left text shows "4 2". When a digit follows "digit + space", an invisible
@@ -1573,6 +1590,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     func keyboardViewSwitchLanguage(_ view: KeyboardView, forward: Bool) {
         setInputMode(inputMode.step(forward, enabled: settings.enabledModes))
+        recordMemory("language \(inputMode)", always: false)
     }
 
     /// How the letters sit on (ع+En) right now (the automatic look follows the last letter typed).
