@@ -297,6 +297,48 @@ final class DaadTests: XCTestCase {
         }
     }
 
+    /// Splits the first typing session into steps, to find what the one-time jump is made of.
+    func testMemoryFirstTypingSteps() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
+        window.isHidden = false
+        let vc = KeyboardViewController()
+        vc.loadViewIfNeeded()
+        vc.view.frame = CGRect(x: 0, y: 552, width: 393, height: 300)
+        window.addSubview(vc.view)
+        vc.viewWillAppear(false)
+        vc.view.layoutIfNeeded()
+        let dummy = KeyboardView()
+        func settle() { RunLoop.current.run(until: Date().addingTimeInterval(0.3)) }
+        settle()
+        var last = footprintMB()
+        func step(_ name: String, _ body: () -> Void) {
+            autoreleasepool { body() }
+            settle()
+            let now = footprintMB()
+            print("MEMORY step \(name): +\(String(format: "%.1f", now - last)) MB (total \(String(format: "%.1f", now)) MB)")
+            last = now
+        }
+        func type(_ w: String) {
+            for ch in w { vc.keyboardView(dummy, didTap: .character(String(ch))) }
+            vc.keyboardView(dummy, didTap: .space)
+        }
+        print("MEMORY step start: total \(String(format: "%.1f", last)) MB")
+        step("first letter") { vc.keyboardView(dummy, didTap: .character("h")) }
+        step("rest of first word") { for ch in "ello" { vc.keyboardView(dummy, didTap: .character(String(ch))) } }
+        step("first space") { vc.keyboardView(dummy, didTap: .space) }
+        step("english words x20") { for _ in 0..<20 { type("the"); type("meeting"); type("ok") } }
+        step("switch language 1") { vc.keyboardViewSwitchLanguage(dummy, forward: true) }
+        step("first arabic word") { type("ازيك") }
+        step("arabic words x20") { for _ in 0..<20 { type("خلصت"); type("بكرة"); type("تمام") } }
+        step("switch language 2") { vc.keyboardViewSwitchLanguage(dummy, forward: true) }
+        step("dual words x20") { for _ in 0..<20 { type("hello"); type("ازيك") } }
+        step("switch language 3") { vc.keyboardViewSwitchLanguage(dummy, forward: true) }
+        step("shift + delete x20") { for _ in 0..<20 { vc.keyboardView(dummy, didTap: .shift); vc.keyboardViewDeleteBackward(dummy, word: false) } }
+        step("language cycle x20") { for _ in 0..<20 { vc.keyboardViewSwitchLanguage(dummy, forward: true) } }
+        step("mixed again x20") { for _ in 0..<20 { type("hello"); type("ازيك"); vc.keyboardViewSwitchLanguage(dummy, forward: true) } }
+        step("memory warning") { vc.didReceiveMemoryWarning() }
+    }
+
     func testMemoryWhileTyping() {
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 393, height: 852))
         window.isHidden = false
