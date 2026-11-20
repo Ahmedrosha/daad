@@ -303,5 +303,32 @@ final class DaadTests: XCTestCase {
         var fixes: [String] = []
         for w in everyday { if let f = lexicon.autocorrection(for: w, language: .arabic) { fixes.append("\(w)→\(f)") } }
         print("EGYPT everyday corrected: \(fixes.count) of \(everyday.count): \(fixes.joined(separator: " "))")
+        for w in ["هعملها", "متزعلش", "مبقتش", "عيالي", "ماشيه", "قوللي", "بتوعنا"] {
+            XCTAssertNil(lexicon.autocorrection(for: w, language: .arabic), w)
+        }
+    }
+
+    /// Real typos must still be fixed: one letter of common words swapped, compared with and without the
+    /// Egyptian-forms rule.
+    func testTyposStillCorrected() {
+        let lexicon = Lexicon()
+        let url = Bundle(for: Lexicon.self).url(forResource: "words_ar", withExtension: "txt")!
+        let lines = (try? String(contentsOf: url, encoding: .utf8))?.split(whereSeparator: \.isNewline) ?? []
+        let words = lines.dropFirst(300).prefix(3000).map { String($0.split(separator: " ")[0]) }.filter { $0.count >= 4 }
+        let letters = Array("ضصثقفغعهخحجشسيبلاتنمكطذئءؤرىةوزظد")
+        var typos: [String] = []
+        for (n, w) in words.enumerated() where typos.count < 400 {
+            var chars = Array(w)
+            let at = 1 + n % (chars.count - 2)
+            chars[at] = letters[(n * 7) % letters.count]
+            let t = String(chars)
+            if !lexicon.isKnown(t, language: .arabic) { typos.append(t) }
+        }
+        Lexicon.leavesEgyptianForms = false
+        let before = typos.filter { lexicon.autocorrection(for: $0, language: .arabic) != nil }
+        Lexicon.leavesEgyptianForms = true
+        let lost = before.filter { lexicon.autocorrection(for: $0, language: .arabic) == nil }
+        print("EGYPT typos corrected before: \(before.count) of \(typos.count), no longer corrected: \(lost.count): \(lost.prefix(40).joined(separator: " "))")
+        XCTAssertLessThanOrEqual(Double(lost.count), Double(before.count) * 0.15)
     }
 }

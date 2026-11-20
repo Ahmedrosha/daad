@@ -353,10 +353,40 @@ final class Lexicon {
     /// The fix autocorrect applies on space, or nil when the word looks fine.
     func autocorrection(for word: String, language: DaadLanguage) -> String? {
         guard word.count >= 2, !isKnown(word, language: language) else { return nil }
+        if language == .arabic, Lexicon.leavesEgyptianForms, isEgyptianForm(word) { return nil }
         let ranked = rank(word, language: language, limit: 3)
         guard let top = ranked.first(where: { $0.kind == .correction }), top.score > 1.0 else { return nil }
         if let first = ranked.first, first.kind == .completion, first.score > top.score + 0.8 { return nil }
         return top.word
+    }
+
+    /// Off only in tests, to compare.
+    static var leavesEgyptianForms = true
+
+    private static let egyptianLeading = ["و", "ف"]
+    private static let egyptianPrefixes = ["ه", "ح", "ب", "م", "ما", "ل"]
+    private static let egyptianEndings = ["ها", "هم", "هوم", "كم", "نا", "ني", "لي", "لك", "له", "لها", "لهم", "لنا", "ك", "ي", "ه", "و"]
+
+    /// An Egyptian word the dictionary doesn't hold whole: a known word with the bits colloquial speech
+    /// adds around it ("هعملها" = ه + عملها, "متزعلش" = م + تزعل + ش, "عيالي" = عيال + ي).
+    /// Autocorrect leaves these alone; suggestions still show.
+    private func isEgyptianForm(_ word: String) -> Bool {
+        func known(_ stem: String) -> Bool { stem.count >= 2 && isKnown(stem, language: .arabic) }
+        var fronts = [word]
+        for lead in Lexicon.egyptianLeading where word.hasPrefix(lead) { fronts.append(String(word.dropFirst(lead.count))) }
+        for f in fronts {
+            var bodies = [f]
+            for p in Lexicon.egyptianPrefixes where f.hasPrefix(p) { bodies.append(String(f.dropFirst(p.count))) }
+            for b in bodies {
+                var cores = [b]
+                if b.hasSuffix("ش") { cores.append(String(b.dropLast())) }
+                for c in cores {
+                    if c != word, known(c) { return true }
+                    for e in Lexicon.egyptianEndings where c.hasSuffix(e) && known(String(c.dropLast(e.count))) { return true }
+                }
+            }
+        }
+        return false
     }
 
     // MARK: Franco (Arabizi) → Arabic
