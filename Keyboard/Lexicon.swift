@@ -371,7 +371,8 @@ final class Lexicon {
     /// adds around it ("هعملها" = ه + عملها, "متزعلش" = م + تزعل + ش, "عيالي" = عيال + ي).
     /// Autocorrect leaves these alone; suggestions still show.
     private func isEgyptianForm(_ word: String) -> Bool {
-        func known(_ stem: String) -> Bool { stem.count >= 2 && isKnown(stem, language: .arabic) }
+        // Short stems match too easily (a typo that happens to end in "ه" over a 2-letter word).
+        func known(_ stem: String) -> Bool { stem.count >= 3 && isKnown(stem, language: .arabic) }
         var fronts = [word]
         for lead in Lexicon.egyptianLeading where word.hasPrefix(lead) { fronts.append(String(word.dropFirst(lead.count))) }
         for f in fronts {
