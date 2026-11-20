@@ -306,8 +306,26 @@ final class KeyboardViewController: UIInputViewController {
     override func selectionDidChange(_ textInput: UITextInput?) {
         super.selectionDidChange(textInput)
         typedLanguage = nil; pendingInsert = nil
-        reload()
+        scheduleReload()
     }
+
+    private var pendingReload: DispatchWorkItem?
+
+    /// Dragging the cursor or selection handles fires many changes a second: wait until it settles
+    /// (a tenth of a second) and update the keys once.
+    private func scheduleReload() {
+        pendingReload?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            guard let self else { return }
+            self.updateAutoShift()
+            self.reload()
+        }
+        pendingReload = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
+    }
+
+    /// Text is selected (e.g. Select All): nothing to suggest.
+    private var hasSelection: Bool { !(proxy.selectedText ?? "").isEmpty }
 
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
@@ -315,6 +333,7 @@ final class KeyboardViewController: UIInputViewController {
         // While the space bar moves the cursor, don't rebuild the keys (e.g. auto-Shift at a sentence start):
         // rebuilding cancels the touch and ends the cursor swipe. Catch up when the finger lifts.
         guard lockedCursorDirection == nil else { return }
+        if hasSelection { scheduleReload(); return }
         updateAutoShift()
         reload()
     }
@@ -1052,7 +1071,7 @@ final class KeyboardViewController: UIInputViewController {
             lastGlideWord = nil
             glideAlternatives = []
         }
-        guard settings.bool(.suggestions), !secretField else {
+        guard settings.bool(.suggestions), !secretField, !hasSelection else {
             suggestionBar.showTools()
             return
         }
