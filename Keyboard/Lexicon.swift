@@ -5,12 +5,6 @@ import Foundation
 final class Lexicon {
     static let shared = Lexicon()
 
-    struct Entry {
-        let word: String
-        let normalized: String
-        let count: Int
-    }
-
     struct Candidate {
         enum Kind { case exact, completion, correction }
         let word: String
@@ -18,13 +12,12 @@ final class Lexicon {
         let kind: Kind
     }
 
-    private var entries: [DaadLanguage: [Entry]] = [:]      // most frequent first
-    private var counts: [DaadLanguage: [String: Int]] = [:]
-    private var maxCount: [DaadLanguage: Int] = [:]
+    /// Bundled words, packed (see WordStore.swift), most frequent first.
+    private var lists: [DaadLanguage: WordList] = [:]
     private var learned: [String: Int] = [:]
     private var bigrams: [String: [String: Int]] = [:]
     /// Bundled next-word tables: context ("word", "w1 w2" or "<s>") → likely next words, best first.
-    private var nextTables: [DaadLanguage: [String: [String]]] = [:]
+    private var nextTables: [DaadLanguage: [PhraseTable]] = [:]
     private var store: UserDefaults = .standard
     private var unsaved = 0
     /// Keeps rude words out of suggestions (they can still be typed).
@@ -99,11 +92,8 @@ final class Lexicon {
     // MARK: Loading
 
     private func ensureLoaded(_ language: DaadLanguage) {
-        guard entries[language] == nil else { return }
-        let (list, map, top) = Lexicon.loadWords(language)
-        entries[language] = list
-        counts[language] = map
-        maxCount[language] = top
+        guard lists[language] == nil else { return }
+        lists[language] = Lexicon.loadWords(language)
     }
 
     private var preloading: Set<DaadLanguage> = []
@@ -111,60 +101,43 @@ final class Lexicon {
     /// Reads a word list on a background thread so the first letter typed doesn't wait for it
     /// (the Arabic list has 100,000 words). Call on the main thread; results are stored on it too.
     func preload(_ language: DaadLanguage) {
-        guard entries[language] == nil, !preloading.contains(language) else { return }
+        guard lists[language] == nil, !preloading.contains(language) else { return }
         preloading.insert(language)
         DispatchQueue.global(qos: .userInitiated).async {
-            let (list, map, top) = Lexicon.loadWords(language)
+            let list = Lexicon.loadWords(language)
             DispatchQueue.main.async {
                 self.preloading.remove(language)
-                guard self.entries[language] == nil else { return }   // typing already loaded it
-                self.entries[language] = list
-                self.counts[language] = map
-                self.maxCount[language] = top
+                guard self.lists[language] == nil else { return }   // typing already loaded it
+                self.lists[language] = list
             }
         }
     }
 
-    private static func loadWords(_ language: DaadLanguage) -> ([Entry], [String: Int], Int) {
-        var list: [Entry] = []
-        var map: [String: Int] = [:]
-        var top = 1
+    /// Low memory: let go of what can be read again later (the other language's words, the Franco
+    /// index and the next-word tables). Learned words stay.
+    func trim(keeping languages: Set<DaadLanguage>) {
+        for lang in [DaadLanguage.arabic, .english] where !languages.contains(lang) {
+            lists[lang] = nil
+        }
+        francoIndex = nil
+        nextTables = [:]
+    }
+
+    private static func loadWords(_ language: DaadLanguage) -> WordList {
         let bundle = Bundle(for: Lexicon.self)
         let name = language == .arabic ? "words_ar" : "words_en"
-        if let url = bundle.url(forResource: name, withExtension: "txt"),
-           let text = try? String(contentsOf: url, encoding: .utf8) {
-            for line in text.split(whereSeparator: \.isNewline) {
-                let parts = line.split(separator: " ")
-                guard parts.count >= 2, let count = Int(parts[1]) else { continue }
-                let word = String(parts[0])
-                guard map[word] == nil else { continue }
-                map[word] = count
-                top = max(top, count)
-                list.append(Entry(word: word, normalized: Lexicon.normalize(word), count: count))
-            }
-        }
+        let list = WordList(file: bundle.url(forResource: name, withExtension: "txt"),
+                            expected: language == .arabic ? 105_000 : 50_000)
         // Everyday Egyptian words that subtitles rarely contain, ranked as fairly common.
-        if language == .arabic,
-           let url = bundle.url(forResource: "words_eg", withExtension: "txt"),
-           let text = try? String(contentsOf: url, encoding: .utf8) {
-            // "word" = everyday word, ranked high; "word 3" = a generated verb form, ranked a bit lower.
-            for line in text.split(whereSeparator: \.isNewline) {
-                let parts = line.split(separator: " ")
-                guard let first = parts.first else { continue }
-                let word = String(first)
-                let tier = parts.count > 1 ? max(Int(parts[1]) ?? 1, 1) : 1
-                let boost = max(top / (40 * tier), 1)
-                if let existing = map[word] {
-                    map[word] = max(existing, boost)
-                } else {
-                    map[word] = boost
-                    list.append(Entry(word: word, normalized: Lexicon.normalize(word), count: boost))
-                }
+        // "word" = everyday word, ranked high; "word 3" = a generated verb form, ranked a bit lower.
+        if language == .arabic {
+            let top = list.top
+            list.merge(file: bundle.url(forResource: "words_eg", withExtension: "txt")) { tier in
+                max(top / (40 * tier), 1)
             }
-            list.sort { (map[$0.word] ?? $0.count) > (map[$1.word] ?? $1.count) }
-            list = list.map { Entry(word: $0.word, normalized: $0.normalized, count: map[$0.word] ?? $0.count) }
+            list.sortByCount()
         }
-        return (list, map, top)
+        return list
     }
 
     // MARK: Text helpers
@@ -204,7 +177,7 @@ final class Lexicon {
     private func baseScore(_ word: String, language: DaadLanguage) -> Double? {
         let k = key(word)
         let uses = learned[k] ?? 0
-        let count = counts[language]?[k]
+        let count = lists[language]?.count(of: k)
         guard count != nil || uses >= 2 else { return nil }
         var score = log10(Double((count ?? 0) + 1))
         if uses > 0 { score += 1.2 * log2(Double(uses) + 1) }   // words you use win quickly
@@ -213,7 +186,7 @@ final class Lexicon {
 
     private func knownDirectly(_ word: String, language: DaadLanguage) -> Bool {
         let k = key(word)
-        return counts[language]?[k] != nil || (learned[k] ?? 0) >= 2
+        return lists[language]?.count(of: k) != nil || (learned[k] ?? 0) >= 2
     }
 
     func isKnown(_ word: String, language: DaadLanguage) -> Bool {
@@ -283,10 +256,14 @@ final class Lexicon {
                 out.append((word, s - 0.12 * Double(word.count - prefix.count)))
             }
         }
+        guard let list = lists[language] else { return out }
+        let pBytes = Array(p.utf8)
         var found = 0
-        for entry in entries[language] ?? [] where entry.normalized.hasPrefix(p) && entry.word != typed {
-            let s = (baseScore(entry.word, language: language) ?? log10(Double(entry.count + 1)))
-            out.append((entry.word, s - 0.12 * Double(entry.word.count - prefix.count)))
+        for i in 0 ..< list.count where list.normalized(i, hasPrefix: pBytes) {
+            let word = list.word(i)
+            guard word != typed else { continue }
+            let s = (baseScore(word, language: language) ?? log10(Double(list.count(at: i) + 1)))
+            out.append((word, s - 0.12 * Double(word.count - prefix.count)))
             found += 1
             if found >= 25 { break }    // list is sorted by frequency
         }
@@ -295,7 +272,7 @@ final class Lexicon {
 
     /// Words one edit away. Mistyping a neighbouring key costs less than other edits.
     private func correctionScores(_ word: String, language: DaadLanguage) -> [(String, Double)] {
-        guard word.count >= 2, counts[language] != nil else { return [] }
+        guard word.count >= 2, lists[language] != nil else { return [] }
         let chars = Array(key(word))
         let alphabet: [Character] = language == .arabic
             ? Array(Lexicon.arabicRows.joined()) + Lexicon.arabicExtra
@@ -332,9 +309,13 @@ final class Lexicon {
         }
         // Same word with a different hamza / taa marbuta is almost certainly what was meant.
         if language == .arabic {
-            let n = Lexicon.normalize(word)
-            for entry in (entries[language] ?? []).prefix(20000) where entry.normalized == n && entry.word != key(word) {
-                found[entry.word] = max(found[entry.word] ?? -.infinity, log10(Double(entry.count + 1)) - 0.2)
+            let n = Array(Lexicon.normalize(word).utf8)
+            if let list = lists[language] {
+                for i in 0 ..< min(list.count, 20000) where list.normalized(i, equals: n) {
+                    let w = list.word(i)
+                    guard w != key(word) else { continue }
+                    found[w] = max(found[w] ?? -.infinity, log10(Double(list.count(at: i) + 1)) - 0.2)
+                }
             }
         }
         return found.map { ($0.key, $0.value) }
@@ -431,10 +412,13 @@ final class Lexicon {
         ensureLoaded(.arabic)
         if francoIndex == nil {
             var index: [String: [(word: String, count: Int)]] = [:]
-            for entry in entries[.arabic] ?? [] where !entry.word.contains(" ") {
-                let key = Lexicon.arabicSkeleton(entry.word)
-                guard !key.isEmpty else { continue }
-                if (index[key]?.count ?? 0) < 8 { index[key, default: []].append((entry.word, entry.count)) }
+            if let list = lists[.arabic] {
+                for i in 0 ..< list.count {
+                    let word = list.word(i)
+                    let key = Lexicon.arabicSkeleton(word)
+                    guard !key.isEmpty else { continue }
+                    if (index[key]?.count ?? 0) < 8 { index[key, default: []].append((word, list.count(at: i))) }
+                }
             }
             francoIndex = index
         }
@@ -456,22 +440,17 @@ final class Lexicon {
 
     private func ensureNextTables(_ language: DaadLanguage) {
         guard nextTables[language] == nil else { return }
-        var table: [String: [String]] = [:]
         let names = language == .arabic ? ["next_eg", "next_ar"] : ["next_en"]   // Egyptian first: it wins ties
-        for name in names {
-            guard let url = Bundle(for: Lexicon.self).url(forResource: name, withExtension: "txt"),
-                  let text = try? String(contentsOf: url, encoding: .utf8) else { continue }
-            for line in text.split(whereSeparator: \.isNewline) {
-                let parts = line.split(separator: "\t", maxSplits: 1)
-                guard parts.count == 2 else { continue }
-                let context = String(parts[0])
-                let words = parts[1].split(separator: " ").map(String.init)
-                var merged = table[context] ?? []
-                for w in words where !merged.contains(w) { merged.append(w) }
-                table[context] = merged
-            }
+        nextTables[language] = names.map {
+            PhraseTable(file: Bundle(for: Lexicon.self).url(forResource: $0, withExtension: "txt"))
         }
-        nextTables[language] = table
+    }
+
+    /// Likely next words after a context, from every table (Egyptian first), without repeats.
+    private func nextWords(_ context: String, _ tables: [PhraseTable]) -> [String] {
+        var merged: [String] = []
+        for t in tables { for w in t.next(after: context) where !merged.contains(w) { merged.append(w) } }
+        return merged
     }
 
     private func tableKey(_ word: String) -> String {
@@ -485,7 +464,7 @@ final class Lexicon {
     /// How likely each word is to come next. `previous` nil means the start of a sentence.
     func contextScores(previous: String?, beforePrevious: String?, language: DaadLanguage) -> [String: Double] {
         ensureNextTables(language)
-        let table = nextTables[language] ?? [:]
+        let tables = nextTables[language] ?? []
         var scores: [String: Double] = [:]
         func add(_ list: [String]?, base: Double, step: Double) {
             for (i, w) in (list ?? []).enumerated() {
@@ -495,14 +474,14 @@ final class Lexicon {
         if let previous {
             let p1 = tableKey(previous)
             let p2 = beforePrevious.map(tableKey) ?? "<s>"
-            add(table[p2 + " " + p1], base: 2.5, step: 0.3)     // two words of context
-            add(table[p1], base: 1.5, step: 0.2)
+            add(nextWords(p2 + " " + p1, tables), base: 2.5, step: 0.3)     // two words of context
+            add(nextWords(p1, tables), base: 1.5, step: 0.2)
             // What this user types after that word counts most.
             for (w, count) in bigrams[key(previous)] ?? [:] {
                 scores[w, default: 0] += 3 + log2(Double(count) + 1)
             }
         } else {
-            add(table["<s>"], base: 1.5, step: 0.15)
+            add(nextWords("<s>", tables), base: 1.5, step: 0.15)
         }
         if blockOffensive { scores = scores.filter { !WordExtras.isBlocked($0.key) } }
         return scores
@@ -519,9 +498,11 @@ final class Lexicon {
     /// Every word glide typing may produce, with how common it is.
     func glideVocabulary(_ language: DaadLanguage) -> [(word: String, count: Int)] {
         ensureLoaded(language)
-        var list = (entries[language] ?? []).map { (word: $0.word, count: $0.count) }
-        let top = maxCount[language] ?? 1
-        for (word, uses) in learned where uses >= 2 && Lexicon.language(of: word) == language && counts[language]?[word] == nil {
+        let words = lists[language]
+        var list: [(word: String, count: Int)] = []
+        if let words { list.reserveCapacity(words.count); for i in 0 ..< words.count { list.append((words.word(i), words.count(at: i))) } }
+        let top = words?.top ?? 1
+        for (word, uses) in learned where uses >= 2 && Lexicon.language(of: word) == language && words?.count(of: word) == nil {
             list.append((word: word, count: min(top, uses * 1000)))
         }
         if blockOffensive { list.removeAll { WordExtras.isBlocked($0.word) } }
@@ -530,7 +511,7 @@ final class Lexicon {
 
     func topCount(_ language: DaadLanguage) -> Int {
         ensureLoaded(language)
-        return maxCount[language] ?? 1
+        return lists[language]?.top ?? 1
     }
 
     // MARK: Learning
