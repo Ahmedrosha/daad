@@ -68,7 +68,7 @@ struct DaadApp: App {
     }
 }
 
-/// Simulator screenshots only: `-shot settings|shortcuts|pinned|bar|memory` opens that screen at launch.
+/// Simulator screenshots only: `-shot settings|shortcuts|pinned|bar` opens that screen at launch.
 let shotScreen: String? = {
     #if DEBUG
     let args = ProcessInfo.processInfo.arguments
@@ -160,7 +160,6 @@ struct SettingsView: View {
     @State private var shotShortcuts = shotScreen == "shortcuts"
     @State private var shotPinned = shotScreen == "pinned"
     @State private var shotBar = shotScreen == "bar"
-    @State private var shotMemory = shotScreen == "memory"
     @AppStorage("appLanguage") private var appLanguage = defaultAppLanguage
 
     // Typing
@@ -283,10 +282,6 @@ struct SettingsView: View {
                 } footer: {
                     Text(t("رتّبهم واختار اللي يظهر. لو كتير، البار بيتسحب يمين وشمال.",
                            "Order them and pick which show. If there are many, the bar scrolls sideways."))
-                }
-
-                Section {
-                    NavigationLink(t("ذاكرة الكيبورد", "Keyboard memory")) { MemoryView() }
                 }
 
                 Section(t("شكل الكيبورد", "Layout")) {
@@ -421,7 +416,6 @@ struct SettingsView: View {
             .navigationDestination(isPresented: $shotShortcuts) { ShortcutsView() }
             .navigationDestination(isPresented: $shotPinned) { PinnedTextsView() }
             .navigationDestination(isPresented: $shotBar) { BarItemsView() }
-            .navigationDestination(isPresented: $shotMemory) { MemoryView() }
             .confirmationDialog(t("تمسح كل الكلمات اللي اتعلمها الكيبورد؟", "Clear all learned words?"),
                                 isPresented: $confirmClear, titleVisibility: .visible) {
                 Button(t("مسح", "Clear"), role: .destructive) {
@@ -690,89 +684,5 @@ private struct BarItemsView: View {
         } else {
             Image(systemName: item.symbol ?? "questionmark")
         }
-    }
-}
-
-/// How much memory the keyboard uses (it records this itself while you type, with Full Access).
-private struct MemoryView: View {
-    @Environment(\.arabic) private var ar
-    @State private var now = 0.0
-    @State private var peak = 0.0
-    @State private var date: Date?
-    @State private var peakEntry: MemoryReport.Entry?
-    @State private var log: [MemoryReport.Entry] = []
-
-    private func t(_ arabic: String, _ english: String) -> String { ar ? arabic : english }
-
-    private func entryRow(_ e: MemoryReport.Entry) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack {
-                Text(e.event.isEmpty ? "—" : e.event).font(.callout)
-                Spacer()
-                Text(String(format: "%.0f MB", e.mb)).monospacedDigit().bold()
-            }
-            Text("\(e.date.formatted(date: .omitted, time: .standard)) · \(t("طول النص", "text")) \(e.textLength)")
-                .font(.caption).foregroundStyle(.secondary).monospacedDigit()
-        }
-        .environment(\.layoutDirection, .leftToRight)
-    }
-
-    var body: some View {
-        List {
-            Section {
-                row(t("آخر قياس", "Last reading"), now)
-                row(t("أعلى رقم", "Highest"), peak)
-                if let date {
-                    Text(date.formatted(date: .abbreviated, time: .shortened)).foregroundStyle(.secondary)
-                }
-            } footer: {
-                Text(t("الكيبورد بيقيس الرقم ده وإنت بتكتب وكل ما يتقفل، ومحتاج Allow Full Access. اكتب شوية عادي وارجع هنا.",
-                       "The keyboard measures this while you type and each time it closes. It needs Allow Full Access. Type for a while, then come back."))
-            }
-            if let peakEntry {
-                Section(t("أعلى رقم حصل وقت", "Highest happened at")) { entryRow(peakEntry) }
-            }
-            if !log.isEmpty {
-                Section(t("آخر القراءات (الأحدث فوق)", "Recent readings (newest first)")) {
-                    ForEach(Array(log.reversed().enumerated()), id: \.offset) { _, e in entryRow(e) }
-                }
-            }
-            Section {
-                Button(t("امسح القراءات", "Clear readings"), role: .destructive) {
-                    MemoryReport.reset(in: SharedSettings.store)
-                    load()
-                }
-            }
-        }
-        .navigationTitle(t("ذاكرة الكيبورد", "Keyboard memory"))
-        .onAppear(perform: load)
-        .refreshable { load() }
-    }
-
-    private func row(_ title: String, _ mb: Double) -> some View {
-        HStack {
-            Text(title)
-            Spacer()
-            Text(mb > 0 ? String(format: "%.0f MB", mb) : "—").monospacedDigit().foregroundStyle(.secondary)
-        }
-    }
-
-    private func load() {
-        let d = SharedSettings.store
-        if shotScreen == "memory", MemoryReport.log(in: d).isEmpty {   // simulator screenshots only
-            let t = Date().timeIntervalSince1970
-            let sample = ["\(t - 300)|48|0|open, clipboard 12 items / 840 chars", "\(t - 200)|55|130|typing",
-                          "\(t - 120)|74|5230|selection", "\(t - 60)|61|5230|close"]
-            d?.set(sample, forKey: MemoryReport.logKey)
-            d?.set(sample[2], forKey: MemoryReport.peakEventKey)
-            d?.set(74.0, forKey: MemoryReport.peakKey); d?.set(61.0, forKey: MemoryReport.nowKey)
-            d?.set(t - 60, forKey: MemoryReport.dateKey)
-        }
-        now = d?.double(forKey: MemoryReport.nowKey) ?? 0
-        peak = d?.double(forKey: MemoryReport.peakKey) ?? 0
-        let ts = d?.double(forKey: MemoryReport.dateKey) ?? 0
-        date = ts > 0 ? Date(timeIntervalSince1970: ts) : nil
-        peakEntry = MemoryReport.peakEntry(in: d)
-        log = MemoryReport.log(in: d)
     }
 }

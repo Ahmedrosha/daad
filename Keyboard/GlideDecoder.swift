@@ -18,7 +18,7 @@ enum GlideDecoder {
         let maxLog = log(Double(max(lexicon.topCount(language), 2)))
 
         var best: [(word: String, score: Double)] = []
-        for (word, count) in lexicon.glideVocabulary(language, startKeys: startKeys, endKeys: endKeys) {
+        for (word, count) in lexicon.glideVocabulary(language) {
             let letters = keyLetters(of: word, language: language)
             guard letters.count >= 2,
                   let first = letters.first, startKeys.contains(first),

@@ -46,12 +46,6 @@ final class KeyboardViewController: UIInputViewController {
     /// Set when the app never shows the keyboard the text typed (Remote Desktop and similar apps that
     /// turn every key into a key press). Counts typed characters that left no trace.
     private var blindField = false
-    /// The language of the last letter this keyboard typed. Some apps (WhatsApp) show the keyboard the
-    /// new text a moment late, so (ع+En) goes by this until the cursor moves or text is deleted.
-    private var typedLanguage: DaadLanguage?
-    /// The last text this keyboard typed and what was before the cursor just then. While the app
-    /// still shows the old text, the keyboard adds this itself (so Shift isn't turned back on).
-    private var pendingInsert: (before: String, text: String)?
     private var blindStrikes = 0
     private var mode: KeyboardMode = .letters
     private var shift: ShiftState = .off
@@ -118,9 +112,8 @@ final class KeyboardViewController: UIInputViewController {
         if !settings.enabledModes.contains(inputMode) { inputMode = settings.enabledModes[0] }
         language = inputMode.language
         // Tells the app which language is being typed, so it lays the text out the right way.
-        primaryLanguage = typingLanguageCode
+        primaryLanguage = language == .arabic ? "ar" : "en-US"
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
-        lexicon.onLoad = { [weak self] in self?.scheduleSuggestions() }   // word lists arrive in the background
         clipboard.configure(store: store)
 
         keyboardView.delegate = self
@@ -214,9 +207,6 @@ final class KeyboardViewController: UIInputViewController {
         access = state
         Access.save(state, to: .standard)
         applyAccess()
-        // StoreKit is asked once per launch of the keyboard, and again only while it is still locked.
-        guard !storeKitChecked || !Access.status(state).unlocked else { return }
-        storeKitChecked = true
         Task { [weak self] in
             guard let fromStore = await Access.fromStoreKit() else { return }
             await MainActor.run {
@@ -227,8 +217,6 @@ final class KeyboardViewController: UIInputViewController {
             }
         }
     }
-
-    private var storeKitChecked = false
 
     private func applyAccess() {
         let status = Access.status(access)
@@ -246,7 +234,6 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillAppear(animated)
         blindField = false
         blindStrikes = 0
-        typedLanguage = nil; pendingInsert = nil
         lexicon.preload(.arabic)
         lexicon.preload(.english)
         mode = .letters
@@ -262,7 +249,6 @@ final class KeyboardViewController: UIInputViewController {
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
         updateBackgroundImage()
         loadAccess()
-        recordMemory("open, clipboard \(clipboard.items.count) items / \(clipboard.items.reduce(0) { $0 + $1.count }) chars")
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -279,18 +265,17 @@ final class KeyboardViewController: UIInputViewController {
     private func announceLanguage() {
         let empty = (proxy.documentContextBeforeInput ?? "").isEmpty && (proxy.documentContextAfterInput ?? "").isEmpty
         guard empty else { return }   // with text in the box, the text itself decides the side
-        let code = typingLanguageCode
+        let code = language == .arabic ? "ar" : "en-US"
         primaryLanguage = code == "ar" ? "en-US" : "ar"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
-            self.primaryLanguage = self.typingLanguageCode
+            self.primaryLanguage = self.language == .arabic ? "ar" : "en-US"
         }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         lexicon.flush()
-        recordMemory("close")
     }
 
     /// iOS holds back touches near the bottom edge (home-indicator gesture), so a long press on the
@@ -309,53 +294,12 @@ final class KeyboardViewController: UIInputViewController {
         coordinator.animate(alongsideTransition: { _ in self.updateHeight() })
     }
 
-    /// The cursor was moved in the app (a tap in the text): go by the text around it again.
-    override func selectionDidChange(_ textInput: UITextInput?) {
-        super.selectionDidChange(textInput)
-        // The cursor also moves when this keyboard types or deletes: that is not the user moving it, and
-        // the keys must not be refreshed under fast-typing fingers because of it.
-        guard Date().timeIntervalSince(lastOwnEdit) > 0.25, lockedCursorDirection == nil else { return }
-        typedLanguage = nil; pendingInsert = nil
-        scheduleReload()
-        if hasSelection { recordMemory("selection", always: false) }
-    }
-
-    private var pendingReload: DispatchWorkItem?
-    /// When this keyboard last changed the text itself.
-    private var lastOwnEdit = Date.distantPast
-    /// Until then, a burst of changes made by the keyboard (delete all, undo) is answered once at the end.
-    private var bulkEditUntil = Date.distantPast
-    private var lastClipboardCheck = Date.distantPast
-
-    /// Dragging the cursor or selection handles fires many changes a second: wait until it settles
-    /// (a tenth of a second) and update the keys once.
-    private func scheduleReload() {
-        pendingReload?.cancel()
-        let work = DispatchWorkItem { [weak self] in
-            guard let self, self.lockedCursorDirection == nil else { return }
-            self.updateAutoShift()
-            self.reload()
-        }
-        pendingReload = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1, execute: work)
-    }
-
-    /// Text is selected (e.g. Select All): nothing to suggest.
-    private var hasSelection: Bool { !(proxy.selectedText ?? "").isEmpty }
-
     override func textDidChange(_ textInput: UITextInput?) {
         super.textDidChange(textInput)
-        // Asking iOS about the pasteboard on every letter is slow: every couple of seconds is enough
-        // (it is also checked when the keyboard opens and when the clipboard screen opens).
-        let now = Date()
-        if hasFullAccess, now.timeIntervalSince(lastClipboardCheck) > 2 {
-            lastClipboardCheck = now
-            clipboard.captureIfChanged()
-        }
+        if hasFullAccess { clipboard.captureIfChanged() }
         // While the space bar moves the cursor, don't rebuild the keys (e.g. auto-Shift at a sentence start):
         // rebuilding cancels the touch and ends the cursor swipe. Catch up when the finger lifts.
         guard lockedCursorDirection == nil else { return }
-        if now < bulkEditUntil || hasSelection { scheduleReload(); return }
         updateAutoShift()
         reload()
     }
@@ -380,7 +324,6 @@ final class KeyboardViewController: UIInputViewController {
                 self.recordingUndo { self.textDocumentProxy.insertText(text) }
                 self.feedback(for: .character(text))
                 self.reload()
-                self.recordMemory("paste \(text.count) chars")
             } else if board.hasImages || board.contains(pasteboardTypes: ["com.compuserve.gif"]) {
                 // Keyboards can only type text; a GIF or picture has to be pasted by the app itself.
                 self.suggestionBar.flash(arabic ? "اضغط مطوّل في خانة الكتابة واختار لصق (Paste)"
@@ -491,7 +434,6 @@ final class KeyboardViewController: UIInputViewController {
 
     private func showPanel(_ newPanel: Panel) {
         panel = newPanel
-        defer { if newPanel != .keys { recordMemory("panel \(newPanel)") } }
         let theme = currentTheme
         let arabic = language == .arabic
         translateWork?.cancel()
@@ -803,16 +745,7 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    /// The language the app is told about, which decides the side an empty box starts on. On (ع+En)
-    /// it's the language a tap types now, not the Arabic layout underneath.
-    private var typingLanguageCode: String {
-        if inputMode == .dual { return currentDualLook.tapsEnglish ? "en-US" : "ar" }
-        return language == .arabic ? "ar" : "en-US"
-    }
-
     private func reload(force: Bool = false) {
-        // (ع+En): keep the app told which language is being typed (it can change with each letter).
-        if inputMode == .dual, primaryLanguage != typingLanguageCode { primaryLanguage = typingLanguageCode }
         let context = LayoutContext(
             language: language,
             mode: mode,
@@ -849,18 +782,7 @@ final class KeyboardViewController: UIInputViewController {
         lexicon.blockOffensive = settings.bool(.blockOffensive)
         suggestionBar.setInputMode(inputMode)
         suggestionBar.setArrowsOn(settings.bool(.arrowRow))
-        scheduleSuggestions()
-    }
-
-    private var pendingSuggestions: DispatchWorkItem?
-
-    /// Suggestions are worked out once, a moment after the last key: several keys in a row (fast typing,
-    /// a held delete, the app echoing the change) cost one look-up instead of one each.
-    private func scheduleSuggestions() {
-        pendingSuggestions?.cancel()
-        let work = DispatchWorkItem { [weak self] in self?.updateSuggestions() }
-        pendingSuggestions = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.035, execute: work)
+        updateSuggestions()
     }
 
     private func updateHeight() {
@@ -935,7 +857,6 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Runs a change and remembers it, so "Undo" can reverse it. Letters typed in a row undo as one word.
     private func recordingUndo(_ body: () -> Void) {
-        lastOwnEdit = Date()
         guard !isUndoing else { body(); return }
         let old = Array(proxy.documentContextBeforeInput ?? "")
         body()
@@ -957,7 +878,6 @@ final class KeyboardViewController: UIInputViewController {
     private func undoLastEdit() -> Bool {
         guard let record = undoStack.popLast() else { return false }
         isUndoing = true
-        if record.added.count + record.removed.count > 40 { bulkEditUntil = Date().addingTimeInterval(0.6) }
         for _ in 0..<record.added.count { proxy.deleteBackward() }
         if !record.removed.isEmpty { proxy.insertText(record.removed) }
         isUndoing = false
@@ -1029,7 +949,6 @@ final class KeyboardViewController: UIInputViewController {
     /// cursor to the end, then back to the start chunk by chunk, and finally puts it back where it was.
     /// Calls back with the text and the cursor's place in it.
     private func readAllText(_ done: @escaping (_ text: String, _ cursor: Int) -> Void) {
-        bulkEditUntil = Date().addingTimeInterval(6)    // the cursor walk below: no refresh per step
         var forward = 0, back = 0, collected = ""
         func toEnd(_ step: Int) {
             let after = proxy.documentContextAfterInput ?? ""
@@ -1043,8 +962,6 @@ final class KeyboardViewController: UIInputViewController {
             guard !before.isEmpty, step < 80 else {
                 let cursor = back - forward
                 proxy.adjustTextPosition(byCharacterOffset: cursor)   // back to where it was
-                bulkEditUntil = Date().addingTimeInterval(0.3)
-                lastOwnEdit = Date()
                 done(collected, cursor)
                 return
             }
@@ -1059,11 +976,10 @@ final class KeyboardViewController: UIInputViewController {
     private func copyAllText(_ report: @escaping (String) -> Void) {
         let arabic = language == .arabic
         guard hasFullAccess else { report(arabic ? "محتاج Allow Full Access" : "Needs Allow Full Access"); return }
-        readAllText { [weak self] text, _ in
+        readAllText { text, _ in
             guard !text.isEmpty else { report(arabic ? "الخانة فاضية" : "The box is empty"); return }
             UIPasteboard.general.string = text
             report(arabic ? "اتنسخ الكل ✓" : "Copied all ✓")
-            self?.recordMemory("copy all")
         }
     }
 
@@ -1073,11 +989,8 @@ final class KeyboardViewController: UIInputViewController {
             guard let self else { return }
             guard !text.isEmpty else { report(arabic ? "الخانة فاضية" : "The box is empty"); return }
             self.proxy.adjustTextPosition(byCharacterOffset: text.count - cursor)   // to the end
-            self.bulkEditUntil = Date().addingTimeInterval(0.8)
-            self.lastOwnEdit = Date()
             for _ in 0..<text.count { self.proxy.deleteBackward() }
             self.undoStack.append(EditRecord(removed: text, added: ""))   // Undo puts it all back
-            self.recordMemory("delete all")
             self.updateAutoShift()
             self.reload()
             report(arabic ? "اتمسح الكل. ترجّعه من تعديل النص ← تراجع" : "Deleted all. Bring it back with Text editing → Undo")
@@ -1115,7 +1028,7 @@ final class KeyboardViewController: UIInputViewController {
             lastGlideWord = nil
             glideAlternatives = []
         }
-        guard settings.bool(.suggestions), !secretField, !hasSelection else {
+        guard settings.bool(.suggestions), !secretField else {
             suggestionBar.showTools()
             return
         }
@@ -1276,36 +1189,6 @@ final class KeyboardViewController: UIInputViewController {
         }
     }
 
-    // MARK: Memory
-
-    private var insertsSinceMemoryCheck = 0
-
-    private var lastMemoryRecord = Date.distantPast
-
-    /// Saves the keyboard's memory use, with what it was doing, for the app's Settings → Keyboard
-    /// memory (needs Full Access). Frequent events (selection) are kept to one reading a second.
-    private func recordMemory(_ event: String, always: Bool = true) {
-        guard hasFullAccess, let group = SharedSettings.store else { return }
-        let now = Date()
-        guard always || now.timeIntervalSince(lastMemoryRecord) >= 1 else { return }
-        lastMemoryRecord = now
-        let proxy = textDocumentProxy
-        let length = (proxy.documentContextBeforeInput?.count ?? 0) + (proxy.selectedText?.count ?? 0)
-            + (proxy.documentContextAfterInput?.count ?? 0)
-        MemoryReport.record(in: group, event: event, textLength: length)
-    }
-
-
-    /// iOS gives keyboards little memory: when it runs short, drop everything that can be loaded again.
-    override func didReceiveMemoryWarning() {
-        super.didReceiveMemoryWarning()
-        recordMemory("memory warning")
-        // (ع+En) types both languages, so it keeps both word lists.
-        lexicon.trim(keeping: inputMode == .dual ? [.arabic, .english] : [language])
-        URLCache.shared.removeAllCachedResponses()
-        recordMemory("after cleanup")
-    }
-
     // MARK: Plain typing (passwords, codes, e-mail, Remote Desktop)
 
     /// Fields where every character must go in exactly as typed: no capital letters on its own, no
@@ -1358,17 +1241,9 @@ final class KeyboardViewController: UIInputViewController {
 
     // MARK: Text helpers
 
-    private func noteTyped(_ text: String) {
-        guard let letter = text.last(where: \.isLetter) else { return }
-        typedLanguage = TextHelpers.isArabic(letter) ? .arabic : .english
-    }
-
     private func insert(_ text: String) {
-        noteTyped(text)
-        let beforeInsert = proxy.documentContextBeforeInput ?? ""
         if plainTyping {
             proxy.insertText(text)
-            pendingInsert = (beforeInsert, text)
             lastCorrection = nil
             if shift == .on { shift = .off }
             checkForBlindField()
@@ -1385,14 +1260,11 @@ final class KeyboardViewController: UIInputViewController {
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
         keepNumbersInOrder(before: text)
         proxy.insertText(text)
-        pendingInsert = (beforeInsert, text)
         lastCorrection = nil
         if shift == .on { shift = .off }
         updateAutoShift()
         checkForBlindField()
         reload()
-        insertsSinceMemoryCheck += 1
-        if insertsSinceMemoryCheck >= 100 { insertsSinceMemoryCheck = 0; recordMemory("typing") }
     }
 
     /// Typing "2 4" in right-to-left text shows "4 2". When a digit follows "digit + space", an invisible
@@ -1429,7 +1301,7 @@ final class KeyboardViewController: UIInputViewController {
     /// Whether the text field expects a capital letter at the cursor (start of a sentence, a word, …).
     private func capitalizationContext() -> Bool {
         let type = proxy.autocapitalizationType ?? .sentences
-        let before = textBeforeCursor
+        let before = proxy.documentContextBeforeInput ?? ""
         switch type {
         case .none: return false
         case .allCharacters: return true
@@ -1443,14 +1315,6 @@ final class KeyboardViewController: UIInputViewController {
             guard let last = trimmed.last else { return true }
             return ".!?".contains(last)
         }
-    }
-
-    /// The text before the cursor, with what this keyboard just typed added when the app hasn't shown it
-    /// yet (then a letter typed at the start no longer looks like the start of a sentence).
-    private var textBeforeCursor: String {
-        let real = proxy.documentContextBeforeInput ?? ""
-        if let p = pendingInsert, real == p.before { return p.before + p.text }
-        return real
     }
 
     /// Deletes one visible character, together with any invisible direction marks around it.
@@ -1577,8 +1441,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 case .down: keyboardView(view, moveCursorLines: 1)
                 }
                 lastCorrection = nil
-                typedLanguage = nil; pendingInsert = nil    // the cursor moved: go by the text around it
-                scheduleReload()
+                updateSuggestions()
             case .forwardDelete:
                 guard let after = proxy.documentContextAfterInput, let next = after.first else { return }
                 proxy.adjustTextPosition(byCharacterOffset: next.utf16.count)
@@ -1603,7 +1466,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
-        typedLanguage = nil; pendingInsert = nil   // after deleting, read the letter before the cursor again
         recordingUndo {
             if isSearching {
                 if !query.isEmpty { query.removeLast() }
@@ -1629,19 +1491,18 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     func keyboardViewSwitchLanguage(_ view: KeyboardView, forward: Bool) {
         setInputMode(inputMode.step(forward, enabled: settings.enabledModes))
-        recordMemory("language \(inputMode)", always: false)
     }
 
     /// How the letters sit on (ع+En) right now (the automatic look follows the last letter typed).
     private var currentDualLook: DualLook {
-        settings.dualLook.resolved(lastLetter: typedLanguage ?? Self.languageBefore(proxy.documentContextBeforeInput ?? ""))
+        settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? ""))
     }
 
     private func setInputMode(_ new: InputMode, refresh: Bool = true) {
         inputMode = new
         language = new.language
         settings.inputMode = new
-        primaryLanguage = typingLanguageCode
+        primaryLanguage = language == .arabic ? "ar" : "en-US"
         mode = .letters
         guard refresh else { return }
         updateAutoShift()
@@ -1670,7 +1531,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
     func keyboardViewCursorGesture(_ view: KeyboardView, began: Bool) {
         lockedCursorDirection = began ? paragraphIsRightToLeft : nil
         if !began {
-            typedLanguage = nil; pendingInsert = nil
             autoPickLanguage(refresh: false)
             updateAutoShift()
             reload()   // also refreshes the suggestions
@@ -1771,7 +1631,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 proxy.insertText(" ")
             }
             proxy.insertText(word)
-            noteTyped(word)
             lastCorrection = nil
             lastGlideWord = word
             glideAlternatives = results
