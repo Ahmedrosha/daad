@@ -94,6 +94,7 @@ final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelega
         table.rowHeight = UITableView.automaticDimension
         table.estimatedRowHeight = 52
         table.register(UITableViewCell.self, forCellReuseIdentifier: "c")
+        table.hideEdgeEffects()
         addSubview(table)
 
         messageLabel.numberOfLines = 0

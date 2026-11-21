@@ -62,6 +62,7 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         collection.dataSource = self
         collection.delegate = self
         collection.register(EmojiCell.self, forCellWithReuseIdentifier: "e")
+        collection.hideEdgeEffects()
         addSubview(collection)
 
         closeButton.titleLabel?.font = UIFont.systemFont(ofSize: 15)

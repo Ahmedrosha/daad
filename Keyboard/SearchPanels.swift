@@ -45,6 +45,7 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
         table.rowHeight = 40
         table.sectionHeaderTopPadding = 0
         table.register(UITableViewCell.self, forCellReuseIdentifier: "r")
+        table.hideEdgeEffects()
         addSubview(table)
 
         resultLabel.numberOfLines = 0
@@ -58,6 +59,7 @@ final class SearchPanelView: UIView, UITableViewDataSource, UITableViewDelegate 
 
         strip.showsHorizontalScrollIndicator = false
         strip.isHidden = true
+        strip.hideEdgeEffects()
         addSubview(strip)
         footerLabel.font = UIFont.systemFont(ofSize: 10, weight: .semibold)
         footerLabel.textAlignment = .center

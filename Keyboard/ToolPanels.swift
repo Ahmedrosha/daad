@@ -358,6 +358,7 @@ final class SettingsPanelView: UIView, UITableViewDataSource, UITableViewDelegat
         table.backgroundColor = .clear
         table.rowHeight = 44
         table.register(UITableViewCell.self, forCellReuseIdentifier: "s")
+        table.hideEdgeEffects()
         addSubview(table)
     }
 
@@ -475,6 +476,7 @@ final class LookPanelView: UIView {
         header.actionButton.addTarget(self, action: #selector(resetTapped), for: .touchUpInside)
         header.actionButton.isHidden = false
         addSubview(header)
+        scroll.hideEdgeEffects()
         addSubview(scroll)
         stack.axis = .vertical
         stack.spacing = 6
@@ -500,6 +502,7 @@ final class LookPanelView: UIView {
         fontTitle.tag = 99
         stack.addArrangedSubview(fontTitle)
         let fontScroll = UIScrollView()
+        fontScroll.hideEdgeEffects()
         fontScroll.showsHorizontalScrollIndicator = false
         fontScroll.heightAnchor.constraint(equalToConstant: 44).isActive = true
         let fontRow = UIStackView()

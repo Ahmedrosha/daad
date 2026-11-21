@@ -9,6 +9,24 @@ struct Suggestion {
 /// Lets the bar scroll sideways even when the drag starts on a button.
 private final class BarScrollView: UIScrollView {
     override func touchesShouldCancel(in view: UIView) -> Bool { true }
+
+    override func didMoveToSuperview() {
+        super.didMoveToSuperview()
+        hideEdgeEffects()
+    }
+}
+
+extension UIScrollView {
+    /// iOS 26+ fades and blurs what scrolls under a scroll view's edges. In the keyboard's short
+    /// strips the top and bottom fades meet and blur everything, so the keyboard turns them off.
+    func hideEdgeEffects() {
+        if #available(iOS 26.0, *) {
+            topEdgeEffect.isHidden = true
+            bottomEdgeEffect.isHidden = true
+            leftEdgeEffect.isHidden = true
+            rightEdgeEffect.isHidden = true
+        }
+    }
 }
 
 /// The strip above the keys: word suggestions while typing, tool buttons otherwise.
