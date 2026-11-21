@@ -1,6 +1,6 @@
 import UIKit
 
-struct KeyboardTheme {
+struct KeyboardTheme: Equatable {
     let background: UIColor
     let key: UIColor
     let specialKey: UIColor
@@ -73,7 +73,7 @@ struct KeyboardTheme {
 
 /// One key. It draws only; touches are handled by KeyboardView.
 final class KeyView: UIView {
-    let key: Key
+    private(set) var key: Key
     private let theme: KeyboardTheme
     private let face = UIView()
     private let label = UILabel()
@@ -102,31 +102,50 @@ final class KeyView: UIView {
         face.layer.shadowRadius = 0
         addSubview(face)
 
-        label.text = key.label
         label.textAlignment = .center
         label.adjustsFontSizeToFitWidth = true
         label.minimumScaleFactor = 0.5
         label.baselineAdjustment = .alignCenters
         face.addSubview(label)
+        hint.font = UIFont.systemFont(ofSize: 10)
+        hint.textAlignment = .right
+        face.addSubview(hint)
+        downHint.font = UIFont.systemFont(ofSize: 11, weight: .medium)
+        downHint.textAlignment = .left
+        face.addSubview(downHint)
+        icon.contentMode = .center
+        face.addSubview(icon)
+        apply(key)
+    }
 
-        if let up = key.upChar {
-            hint.text = up
-            hint.font = UIFont.systemFont(ofSize: 10)
-            hint.textAlignment = .right
-            face.addSubview(hint)
-        }
-        if let down = key.downChar {
-            downHint.text = down
-            downHint.font = UIFont.systemFont(ofSize: 11, weight: .medium)
-            downHint.textAlignment = .left
-            face.addSubview(downHint)
-        }
+    /// Shows another key in this same view (new letters after Shift or a language change), so the
+    /// keyboard doesn't build all its keys again for every letter.
+    func update(key newKey: Key) {
+        guard newKey != key else { return }     // most keys don't change (e.g. Shift only touches letters)
+        key = newKey
+        apply(newKey)
+        setNeedsLayout()
+    }
+
+    private func apply(_ key: Key) {
+        label.text = key.label
+        label.alpha = 1
+        hint.text = key.upChar
+        hint.isHidden = key.upChar == nil
+        downHint.text = key.downChar
+        downHint.isHidden = key.downChar == nil
+        downHint.font = UIFont.systemFont(ofSize: 11, weight: .medium)
+        downHint.textAlignment = .left
+        label.textAlignment = .center
         if let symbol = key.symbol {
             let config = UIImage.SymbolConfiguration(pointSize: 18, weight: .regular)
             icon.image = UIImage(systemName: symbol, withConfiguration: config)
-            icon.contentMode = .center
-            face.addSubview(icon)
+            icon.isHidden = false
+        } else {
+            icon.image = nil
+            icon.isHidden = true
         }
+        icon.alpha = 1
         updateColors()
     }
 

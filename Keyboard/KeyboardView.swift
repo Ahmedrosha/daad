@@ -30,6 +30,7 @@ final class KeyboardView: UIView {
     private var rowViews: [[KeyView]] = []
     private var maxUnits: CGFloat = 10
     private var theme = KeyboardTheme.make(dark: false)
+    private var currentLook: KeyLook?
     private var popup = KeyPopupView(theme: .make(dark: false))
     private var trackers: [ObjectIdentifier: TouchTracker] = [:]
 
@@ -60,10 +61,26 @@ final class KeyboardView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(rows: [KeyRow], maxUnits: CGFloat, theme: KeyboardTheme, look: KeyLook = KeyLook()) {
-        cancelAllTouches()
+        // Same keys in the same places (only letters changed, e.g. Shift): update them in place.
+        let sameShape = self.theme == theme && currentLook == look && self.maxUnits == maxUnits
+            && rowViews.count == rows.count
+            && zip(self.rows, rows).allSatisfy { old, new in
+                old.rightToLeft == new.rightToLeft && old.keys.count == new.keys.count
+                    && zip(old.keys, new.keys).allSatisfy { $0.width == $1.width && $0.style == $1.style }
+            }
         self.rows = rows
         self.maxUnits = maxUnits
         self.theme = theme
+        if sameShape {
+            for (views, row) in zip(rowViews, rows) {
+                for (v, key) in zip(views, row.keys) { v.update(key: key) }
+            }
+            // Fingers already on the keys carry on: fast typing and a held delete are not interrupted.
+            if !trackers.values.contains(where: { $0.gliding }) { trail.path = nil }
+            return
+        }
+        cancelAllTouches()      // the key views are replaced below
+        currentLook = look
         backgroundColor = theme.background
 
         rowViews.flatMap { $0 }.forEach { $0.removeFromSuperview() }
@@ -140,7 +157,7 @@ final class KeyboardView: UIView {
             guard let kv = keyView(at: p) else { continue }
 
             // Fast typing: a new finger commits any letter still held by another finger.
-            for (id, tracker) in Array(trackers) where tracker.keyView.key.action.isCharacter && tracker.alternates == nil && !tracker.gliding {
+            for (id, tracker) in Array(trackers) where tracker.key.action.isCharacter && tracker.alternates == nil && !tracker.gliding {
                 trackers[id] = nil
                 finish(tracker, cancelled: false)
             }
@@ -156,7 +173,7 @@ final class KeyboardView: UIView {
         for touch in touches {
             guard let tracker = trackers[ObjectIdentifier(touch)] else { continue }
             let p = touch.location(in: self)
-            switch tracker.keyView.key.action {
+            switch tracker.key.action {
             case .space:
                 // After the hold that switches language, a clear move is needed, so a small wobble
                 // doesn't cancel the switch.
@@ -230,7 +247,7 @@ final class KeyboardView: UIView {
                 // Moving cancels the long-press menu: holding still is a long press, moving is a flick or glide.
                 if tracker.alternates == nil && moved > 10 { tracker.invalidate() }
                 // Show the flick character in the bubble while flicking up (symbol) or down (English letter).
-                let key = tracker.keyView.key
+                let key = tracker.key
                 if tracker.alternates == nil, !tracker.gliding, key.upChar != nil || key.downChar != nil {
                     let flick = flickChar(tracker, end: p)
                     if (flick != nil) != tracker.showingFlick || (flick != nil && flick != tracker.flickShown),
@@ -282,26 +299,37 @@ final class KeyboardView: UIView {
     }
 
     private func cancelAllTouches() {
+        var cursorGesture = false
         for tracker in trackers.values {
             tracker.invalidate()
             tracker.alternates?.removeFromSuperview()
+            tracker.keyView.isHighlighted = false
+            if tracker.cursorMode { cursorGesture = true }
         }
         trackers.removeAll()
+        popup.hide()
         setCursorModeVisual(false)
+        // The controller holds a few things back while the space bar moves the cursor: tell it that's over.
+        if cursorGesture {
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.delegate?.keyboardViewCursorGesture(self, began: false)
+            }
+        }
     }
 
     private func begin(_ tracker: TouchTracker) {
         let kv = tracker.keyView
         kv.isHighlighted = true
-        delegate?.keyboardView(self, feedbackFor: kv.key.action)
+        delegate?.keyboardView(self, feedbackFor: tracker.key.action)
 
-        switch kv.key.action {
+        switch tracker.key.action {
         case .character:
             if delegate?.popupsEnabled ?? true {
-                popup.show(kv.key.label, over: kv.faceFrameInParent, in: bounds)
+                popup.show(tracker.key.label, over: kv.faceFrameInParent, in: bounds)
                 bringSubviewToFront(popup)
             }
-            if !kv.key.alternates.isEmpty {
+            if !tracker.key.alternates.isEmpty {
                 tracker.timer = schedule(0.4, repeats: false) { [weak self, weak tracker] _ in
                     guard let self, let tracker else { return }
                     self.showAlternates(for: tracker)
@@ -325,12 +353,12 @@ final class KeyboardView: UIView {
             }
 
         case .arrow:
-            delegate?.keyboardView(self, didTap: kv.key.action)
+            delegate?.keyboardView(self, didTap: tracker.key.action)
             tracker.timer = schedule(0.4, repeats: false) { [weak self, weak tracker] _ in
                 guard let self, let tracker else { return }
                 tracker.timer = self.schedule(0.07, repeats: true) { [weak self, weak tracker] _ in
                     guard let self, let tracker else { return }
-                    self.delegate?.keyboardView(self, didTap: tracker.keyView.key.action)
+                    self.delegate?.keyboardView(self, didTap: tracker.key.action)
                 }
             }
 
@@ -356,7 +384,7 @@ final class KeyboardView: UIView {
 
     private func showAlternates(for tracker: TouchTracker) {
         popup.hide()
-        let alt = AlternatesView(items: [tracker.keyView.key.label] + tracker.keyView.key.alternates, theme: theme)
+        let alt = AlternatesView(items: [tracker.key.label] + tracker.key.alternates, theme: theme)
         addSubview(alt)
         alt.place(over: tracker.keyView.faceFrameInParent, in: bounds)
         tracker.alternates = alt
@@ -395,7 +423,7 @@ final class KeyboardView: UIView {
             return
         }
 
-        switch kv.key.action {
+        switch tracker.key.action {
         case .space:
             if tracker.cursorMode {
                 setCursorModeVisual(false)
@@ -412,7 +440,7 @@ final class KeyboardView: UIView {
         case .backspace, .arrow:
             break
         default:
-            if !cancelled { delegate?.keyboardView(self, didTap: kv.key.action) }
+            if !cancelled { delegate?.keyboardView(self, didTap: tracker.key.action) }
         }
     }
 
@@ -429,8 +457,8 @@ final class KeyboardView: UIView {
         let base = max(tracker.keyView.bounds.width * 0.75, 22)
         let dx = abs(p.x - tracker.start.x), dy = tracker.start.y - p.y
         // An upward move is a flick unless it clearly travels on to other keys.
-        if tracker.keyView.key.upChar != nil && dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
-        if tracker.keyView.key.downChar != nil && -dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
+        if tracker.key.upChar != nil && dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
+        if tracker.key.downChar != nil && -dy > dx * 0.8 { return max(base, tracker.keyView.bounds.height * 1.6) }
         return base
     }
 
@@ -440,14 +468,14 @@ final class KeyboardView: UIView {
 
     /// The English letter on a dual-keyboard key, if the finger moved clearly downward.
     private func flickDownChar(_ tracker: TouchTracker, end: CGPoint) -> String? {
-        guard let down = tracker.keyView.key.downChar else { return nil }
+        guard let down = tracker.key.downChar else { return nil }
         let dx = abs(end.x - tracker.start.x), dy = end.y - tracker.start.y
         return dy > 14 && dy > dx ? down : nil
     }
 
     /// The flick-up symbol, if the finger moved clearly upward and stayed near its key.
     private func flickUpChar(_ tracker: TouchTracker, end: CGPoint) -> String? {
-        guard let up = tracker.keyView.key.upChar else { return nil }
+        guard let up = tracker.key.upChar else { return nil }
         let dx = abs(end.x - tracker.start.x), dy = tracker.start.y - end.y
         return dy > 16 && dy > dx ? up : nil
     }
@@ -491,6 +519,9 @@ extension KeyboardView: UIInputViewAudioFeedback {
 
 private final class TouchTracker {
     let keyView: KeyView
+    /// The key as it was when the finger came down: what the user saw is what gets typed, even if the
+    /// letters on the keys change (Shift, the other language) before the finger lifts.
+    let key: Key
     let start: CGPoint
     var timer: Timer?
     var repeatCount = 0
@@ -513,6 +544,7 @@ private final class TouchTracker {
 
     init(keyView: KeyView, start: CGPoint) {
         self.keyView = keyView
+        self.key = keyView.key
         self.start = start
     }
 
