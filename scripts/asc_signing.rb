@@ -40,7 +40,8 @@ end
 
 def setup
   FileUtils.mkdir_p(WORK)
-  state = { "profiles" => {} }
+  state = { "profiles" => {}, "lastBuild" => newest_build_number }
+  puts "Newest build before this upload: #{state["lastBuild"] || "none"}"
   key = OpenSSL::PKey::RSA.new(2048)
   File.write(File.join(WORK, "dist.key"), key.to_pem)
   csr = OpenSSL::X509::Request.new
@@ -86,17 +87,35 @@ end
 # Apple checks the signing certificate while it processes an upload, which can take a while after the
 # upload finishes. Revoking it too early fails the build with "90721 Certificate Revoked", so when
 # WAIT_FOR_BUILD is set, wait until the newest build of the app is no longer processing.
-def wait_for_processing
+def app_id
+  @app_id ||= api("GET", "/v1/apps?filter[bundleId]=com.daad.keyboard")["data"].first&.dig("id")
+end
+
+def newest_build
+  return nil unless app_id
+  api("GET", "/v1/builds?filter[app]=#{app_id}&sort=-uploadedDate&limit=1")["data"].first
+end
+
+def newest_build_number
+  newest_build&.dig("attributes", "version")&.to_i
+rescue => e
+  puts "Could not read the newest build (#{e})"
+  nil
+end
+
+# Waits until Apple has finished processing this run's upload: the first build numbered above the
+# newest one that existed before the upload (noted in setup). Until then the certificate must stay.
+def wait_for_processing(before)
   started = Time.now
-  app = api("GET", "/v1/apps?filter[bundleId]=com.daad.keyboard")["data"].first
-  return puts("App not found, not waiting") unless app
+  return puts("App not found, not waiting") unless app_id
   sleep 60
   loop do
-    build = api("GET", "/v1/builds?filter[app]=#{app["id"]}&sort=-uploadedDate&limit=1")["data"].first
+    build = newest_build
+    number = build&.dig("attributes", "version")&.to_i
     st = build && build["attributes"]["processingState"]
-    fresh = build && Time.parse(build["attributes"]["uploadedDate"]) > started - 6 * 60
-    puts "Newest build #{build && build["attributes"]["version"]}: #{st}#{fresh ? "" : " (older upload, waiting for the new one)"}"
-    break if fresh && st != "PROCESSING"
+    ours = number && (before.nil? || number > before)
+    puts "Newest build #{number}: #{st}#{ours ? "" : " (from before this upload #{before}, waiting for the new one)"}"
+    break if ours && st != "PROCESSING"
     break puts("Stopped waiting after 45 minutes") if Time.now - started > 45 * 60
     sleep 60
   end
@@ -108,7 +127,7 @@ end
 def cleanup
   return puts("Nothing to clean up") unless File.exist?(STATE)
   state = JSON.parse(File.read(STATE))
-  wait_for_processing if ENV["WAIT_FOR_BUILD"] == "1"
+  wait_for_processing(state["lastBuild"]) if ENV["WAIT_FOR_BUILD"] == "1"
   (state["profiles"] || {}).each_value do |p|
     api("DELETE", "/v1/profiles/#{p["id"]}") rescue puts("Could not delete profile #{p["name"]}: #{$!}")
   end
