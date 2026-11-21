@@ -264,6 +264,8 @@ final class KeyboardViewController: UIInputViewController {
     /// Re-sends the keyboard language the same way switching languages does (to the other and back),
     /// so an empty text box puts the cursor on the right for Arabic and on the left for English.
     private func announceLanguage() {
+        // (ع+En) flips the side with the first letter instead (see insert): no left-right-left on opening.
+        guard inputMode != .dual else { return }
         let empty = (proxy.documentContextBeforeInput ?? "").isEmpty && (proxy.documentContextAfterInput ?? "").isEmpty
         guard empty else { return }   // with text in the box, the text itself decides the side
         let code = language == .arabic ? "ar" : "en-US"
@@ -277,9 +279,14 @@ final class KeyboardViewController: UIInputViewController {
 
     /// The side the app was last told to write on (see the ⇄ key).
     private var directionArabic = true
+    /// While the app is being told a new side before the first letter, keys wait here, in order.
+    private var holdingForLanguage = false
+    private var heldKeys: [() -> Void] = []
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        holdingForLanguage = false
+        heldKeys = []
         lexicon.flush()
     }
 
@@ -1262,6 +1269,32 @@ final class KeyboardViewController: UIInputViewController {
            (proxy.documentContextAfterInput ?? "").isEmpty {
             proxy.insertText("\u{200F}")
         }
+        // (ع+En): apps like WhatsApp set a message's side from the keyboard's language only while the
+        // box is empty. A first letter in the other language flips the side the way ⇄ does, waits a
+        // moment for the app to move the cursor, then is typed; keys pressed meanwhile follow in order.
+        // The side is the keyboard's own note (never read back from iOS), so after the flip it matches
+        // and the letter goes straight in.
+        if inputMode == .dual, !searchField, !holdingForLanguage, let first = text.first, first.isLetter,
+           (proxy.documentContextBeforeInput ?? "").isEmpty,
+           (proxy.documentContextAfterInput ?? "").isEmpty {
+            let arabic = TextHelpers.isArabic(first)
+            if arabic != directionArabic {
+                directionArabic = arabic
+                primaryLanguage = arabic ? "ar" : "en-US"
+                holdingForLanguage = true
+                let release = { [weak self] in
+                    guard let self, self.holdingForLanguage else { return }
+                    self.holdingForLanguage = false
+                    self.recordingUndo { self.insert(text) }
+                    let held = self.heldKeys
+                    self.heldKeys = []
+                    held.forEach { $0() }
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: release)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: release)   // safety: never stay held
+                return
+            }
+        }
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
         keepNumbersInOrder(before: text)
         proxy.insertText(text)
@@ -1413,6 +1446,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     var popupsEnabled: Bool { settings.bool(.keyPopups) }
 
     func keyboardView(_ view: KeyboardView, didTap action: KeyAction) {
+        if holdingForLanguage { heldKeys.append { [weak self] in self?.keyboardView(view, didTap: action) }; return }
         recordingUndo {
             if isSearching && handleSearchKey(action) { return }
             switch action {
@@ -1468,6 +1502,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {
+        if holdingForLanguage { heldKeys.append { [weak self] in self?.keyboardView(view, insertAlternate: text) }; return }
         recordingUndo {
             if isSearching { _ = handleSearchKey(.character(text)); return }
             insert(text)
@@ -1475,6 +1510,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
+        if holdingForLanguage { heldKeys.append { [weak self] in self?.keyboardViewDeleteBackward(view, word: word) }; return }
         recordingUndo {
             if isSearching {
                 if !query.isEmpty { query.removeLast() }
