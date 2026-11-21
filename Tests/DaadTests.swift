@@ -331,4 +331,21 @@ final class DaadTests: XCTestCase {
         print("EGYPT typos corrected before: \(before.count) of \(typos.count), no longer corrected: \(lost.count): \(lost.prefix(40).joined(separator: " "))")
         XCTAssertLessThanOrEqual(Double(lost.count), Double(before.count) * 0.15)
     }
+
+    func testDualTypingEnglishOpensTheEnglishNumbersPage() {
+        func symbols(_ look: DualLook) -> (key: String?, page: [String]) {
+            var c = context(.arabic)
+            c.dual = true; c.dualLook = look
+            let letters = Layouts.build(c).rows
+            c.mode = .symbols1
+            let page = Layouts.build(c).rows.flatMap { $0.keys }.compactMap { $0.label }
+            return (label(of: .modeChange(.symbols1), in: letters), page)
+        }
+        let english = symbols(.englishBig)
+        XCTAssertEqual(english.key, "123")
+        XCTAssertTrue(english.page.contains("?") && english.page.contains(",") && !english.page.contains("؟"))
+        let arabic = symbols(.arabicBig)
+        XCTAssertEqual(arabic.key, "١٢٣")
+        XCTAssertTrue(arabic.page.contains("؟") && arabic.page.contains("،"))
+    }
 }

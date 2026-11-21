@@ -174,7 +174,8 @@ enum Layouts {
         let comma = Key(action: .character("،"), label: "،", alternates: harakat + ["؛"])
         let period = Key(action: .character("."), label: ".", alternates: ["؟", "!", "،", ":", "\"", "-", "'"])
         rows.append(bottomRow(c, maxUnits: max,
-                              modeKey: modeKey("١٢٣", to: .symbols1),
+                              // (ع+En) while typing English: the English numbers page, like the English keyboard.
+                              modeKey: modeKey(c.typingEnglishOnDual ? "123" : "١٢٣", to: .symbols1),
                               left: comma, right: period))
         return (rows, max)
     }
@@ -225,7 +226,7 @@ enum Layouts {
     // MARK: Symbols
 
     private static func symbols(_ c: LayoutContext) -> [KeyRow] {
-        let arabic = c.language == .arabic
+        let arabic = c.language == .arabic && !c.typingEnglishOnDual
         var rows: [KeyRow] = []
         let r3Chars = arabic ? [".", "،", "؟", "!", "'"] : [".", ",", "?", "!", "'"]
         let r3Keys = r3Chars.map { Key(action: .character($0), label: $0, width: 1.4) }
