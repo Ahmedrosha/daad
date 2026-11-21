@@ -303,7 +303,7 @@ final class DaadTests: XCTestCase {
         var fixes: [String] = []
         for w in everyday { if let f = lexicon.autocorrection(for: w, language: .arabic) { fixes.append("\(w)→\(f)") } }
         print("EGYPT everyday corrected: \(fixes.count) of \(everyday.count): \(fixes.joined(separator: " "))")
-        for w in ["هعملها", "متزعلش", "مبقتش", "عيالي", "ماشيه", "قوللي", "بتوعنا"] {
+        for w in ["هعملها", "متزعلش", "مبقتش", "عيالي", "ماشيه", "قوللي", "بتوعنا", "ماتعملش", "متعملش", "مابتعملش", "هتعمليها"] {
             XCTAssertNil(lexicon.autocorrection(for: w, language: .arabic), w)
         }
     }
