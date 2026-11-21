@@ -304,6 +304,10 @@ enum Layouts {
         let spaceIndex = keys.count
         keys.append(Key(action: .space, label: c.dual && c.language == .arabic ? InputMode.dual.displayName : c.language.displayName,
                         smallLabel: true))
+        // (ع+En): a key to flip the writing side by hand, taken from the space bar.
+        if c.dual && c.language == .arabic {
+            keys.append(Key(action: .toggleDirection, label: "", symbol: "arrow.left.arrow.right", width: 1.2, style: .special))
+        }
         if let right { keys.append(right) }
         let isAccent = !c.returnLabel.isEmpty
         keys.append(Key(action: .returnKey, label: c.returnLabel,

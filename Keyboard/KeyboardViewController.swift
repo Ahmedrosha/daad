@@ -113,6 +113,7 @@ final class KeyboardViewController: UIInputViewController {
         language = inputMode.language
         // Tells the app which language is being typed, so it lays the text out the right way.
         primaryLanguage = language == .arabic ? "ar" : "en-US"
+        directionArabic = language == .arabic
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
         clipboard.configure(store: store)
 
@@ -270,8 +271,12 @@ final class KeyboardViewController: UIInputViewController {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
             self.primaryLanguage = self.language == .arabic ? "ar" : "en-US"
+            self.directionArabic = self.language == .arabic
         }
     }
+
+    /// The side the app was last told to write on (see the ⇄ key).
+    private var directionArabic = true
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
@@ -1433,6 +1438,10 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 dismissKeyboard()
             case .emoji:
                 showPanel(.emoji)
+            case .toggleDirection:
+                // Told once per press; the keyboard keeps its own note and never reads the value back.
+                directionArabic.toggle()
+                primaryLanguage = directionArabic ? "ar" : "en-US"
             case .arrow(let direction):
                 switch direction {
                 case .left: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? 1 : -1)
@@ -1503,6 +1512,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
         language = new.language
         settings.inputMode = new
         primaryLanguage = language == .arabic ? "ar" : "en-US"
+        directionArabic = language == .arabic
         mode = .letters
         guard refresh else { return }
         updateAutoShift()

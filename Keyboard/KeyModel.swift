@@ -28,6 +28,8 @@ enum KeyAction: Equatable {
     case emoji
     case arrow(ArrowDirection)
     case modeChange(KeyboardMode)
+    /// (ع+En): flips the side the app writes on, like switching keyboards; the keys stay the same.
+    case toggleDirection
 
     var isCharacter: Bool {
         if case .character = self { return true }
