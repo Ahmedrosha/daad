@@ -112,7 +112,7 @@ final class KeyboardViewController: UIInputViewController {
         if !settings.enabledModes.contains(inputMode) { inputMode = settings.enabledModes[0] }
         language = inputMode.language
         // Tells the app which language is being typed, so it lays the text out the right way.
-        primaryLanguage = language == .arabic ? "ar" : "en-US"
+        primaryLanguage = typingLanguageCode
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
         clipboard.configure(store: store)
 
@@ -265,17 +265,37 @@ final class KeyboardViewController: UIInputViewController {
     private func announceLanguage() {
         let empty = (proxy.documentContextBeforeInput ?? "").isEmpty && (proxy.documentContextAfterInput ?? "").isEmpty
         guard empty else { return }   // with text in the box, the text itself decides the side
-        let code = language == .arabic ? "ar" : "en-US"
+        let code = typingLanguageCode
         primaryLanguage = code == "ar" ? "en-US" : "ar"
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { [weak self] in
             guard let self else { return }
-            self.primaryLanguage = self.language == .arabic ? "ar" : "en-US"
+            self.primaryLanguage = self.typingLanguageCode
         }
+    }
+
+    /// (ع+En): the language of the last letter typed, kept between openings. Some apps (WhatsApp) set
+    /// a message's side from the keyboard's language while the box is still empty and never change it
+    /// afterwards, so the next message is announced in the language last typed.
+    private var lastLetterLanguage: DaadLanguage? = {
+        switch UserDefaults.standard.string(forKey: "dualLastLanguage") {
+        case "ar": return .arabic
+        case "en": return .english
+        default: return nil
+        }
+    }()
+    private var boxWasEmpty = true
+
+    /// The language the app is told about. On (ع+En) it is the language last typed (Arabic until
+    /// something has been typed), not the Arabic layout underneath.
+    private var typingLanguageCode: String {
+        if inputMode == .dual { return lastLetterLanguage == .english ? "en-US" : "ar" }
+        return language == .arabic ? "ar" : "en-US"
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         lexicon.flush()
+        if let l = lastLetterLanguage { UserDefaults.standard.set(l == .arabic ? "ar" : "en", forKey: "dualLastLanguage") }
     }
 
     /// iOS holds back touches near the bottom edge (home-indicator gesture), so a long press on the
@@ -299,6 +319,10 @@ final class KeyboardViewController: UIInputViewController {
         if hasFullAccess { clipboard.captureIfChanged() }
         // While the space bar moves the cursor, don't rebuild the keys (e.g. auto-Shift at a sentence start):
         // rebuilding cancels the touch and ends the cursor swipe. Catch up when the finger lifts.
+        // (ع+En): the box was just emptied (message sent): tell the app the language for the next one, once.
+        let empty = (proxy.documentContextBeforeInput ?? "").isEmpty && (proxy.documentContextAfterInput ?? "").isEmpty
+        if inputMode == .dual, empty, !boxWasEmpty { announceLanguage() }
+        boxWasEmpty = empty
         guard lockedCursorDirection == nil else { return }
         updateAutoShift()
         reload()
@@ -1250,16 +1274,6 @@ final class KeyboardViewController: UIInputViewController {
             reload()
             return
         }
-        // (ع+En): the first letter of a message tells the app which language it is in. Some apps
-        // (WhatsApp) lay the whole message out by the keyboard's language rather than by the text, so
-        // English would start on the right. Only in an empty box: at most one change per message, never
-        // one per letter (apps redo their layout each time they are told).
-        if inputMode == .dual, let first = text.first, first.isLetter,
-           (proxy.documentContextBeforeInput ?? "").isEmpty,
-           (proxy.documentContextAfterInput ?? "").isEmpty {
-            let code = TextHelpers.isArabic(first) ? "ar" : "en-US"
-            if primaryLanguage != code { primaryLanguage = code }
-        }
         // The invisible right-to-left mark only goes before Arabic letters, and never in a search box
         // (it would become part of what's searched for).
         if settings.bool(.rtlMark), !searchField, let first = text.first, TextHelpers.isArabic(first),
@@ -1267,6 +1281,7 @@ final class KeyboardViewController: UIInputViewController {
            (proxy.documentContextAfterInput ?? "").isEmpty {
             proxy.insertText("\u{200F}")
         }
+        if let first = text.first, first.isLetter { lastLetterLanguage = TextHelpers.isArabic(first) ? .arabic : .english }
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
         keepNumbersInOrder(before: text)
         proxy.insertText(text)
@@ -1512,7 +1527,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
         inputMode = new
         language = new.language
         settings.inputMode = new
-        primaryLanguage = language == .arabic ? "ar" : "en-US"
+        primaryLanguage = typingLanguageCode
         mode = .letters
         guard refresh else { return }
         updateAutoShift()
