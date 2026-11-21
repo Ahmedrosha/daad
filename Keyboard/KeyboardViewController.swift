@@ -284,9 +284,6 @@ final class KeyboardViewController: UIInputViewController {
         }
     }()
     private var boxWasEmpty = true
-    /// While the app is being told a new language before the first letter, keys wait here, in order.
-    private var holdingForLanguage = false
-    private var heldKeys: [() -> Void] = []
 
     /// The language the app is told about. On (ع+En) it is the language last typed (Arabic until
     /// something has been typed), not the Arabic layout underneath.
@@ -1284,28 +1281,6 @@ final class KeyboardViewController: UIInputViewController {
            (proxy.documentContextAfterInput ?? "").isEmpty {
             proxy.insertText("\u{200F}")
         }
-        // (ع+En): the first letter in an empty box is in the other language than the app was told (the
-        // cursor sits on the wrong side). Do what switching keyboards does: tell the app the new language,
-        // give it a moment to move the cursor, then type the letter. Keys pressed meanwhile wait in order.
-        if inputMode == .dual, !searchField, let first = text.first, first.isLetter,
-           (proxy.documentContextBeforeInput ?? "").isEmpty,
-           (proxy.documentContextAfterInput ?? "").isEmpty {
-            let code = TextHelpers.isArabic(first) ? "ar" : "en-US"
-            if primaryLanguage != code {
-                primaryLanguage = code
-                lastLetterLanguage = TextHelpers.isArabic(first) ? .arabic : .english
-                holdingForLanguage = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-                    guard let self else { return }
-                    self.holdingForLanguage = false
-                    self.recordingUndo { self.insert(text) }
-                    let held = self.heldKeys
-                    self.heldKeys = []
-                    held.forEach { $0() }
-                }
-                return
-            }
-        }
         if let first = text.first, first.isLetter { lastLetterLanguage = TextHelpers.isArabic(first) ? .arabic : .english }
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
         keepNumbersInOrder(before: text)
@@ -1458,7 +1433,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
     var popupsEnabled: Bool { settings.bool(.keyPopups) }
 
     func keyboardView(_ view: KeyboardView, didTap action: KeyAction) {
-        if holdingForLanguage { heldKeys.append { [weak self] in self?.keyboardView(view, didTap: action) }; return }
         recordingUndo {
             if isSearching && handleSearchKey(action) { return }
             switch action {
@@ -1510,7 +1484,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {
-        if holdingForLanguage { heldKeys.append { [weak self] in self?.keyboardView(view, insertAlternate: text) }; return }
         recordingUndo {
             if isSearching { _ = handleSearchKey(.character(text)); return }
             insert(text)
@@ -1518,7 +1491,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
     }
 
     func keyboardViewDeleteBackward(_ view: KeyboardView, word: Bool) {
-        if holdingForLanguage { heldKeys.append { [weak self] in self?.keyboardViewDeleteBackward(view, word: word) }; return }
         recordingUndo {
             if isSearching {
                 if !query.isEmpty { query.removeLast() }
