@@ -1451,7 +1451,7 @@ extension KeyboardViewController: KeyboardViewDelegate {
             if isSearching && handleSearchKey(action) { return }
             switch action {
             case .character(let text):
-                insert(text)
+                insert(caseForShift(text))
             case .space:
                 handleSpace()
             case .returnKey:
@@ -1498,7 +1498,14 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     /// Dual keyboard: the letter from flicking down (already capital when Shift is on).
     func keyboardView(_ view: KeyboardView, insertFlickDown text: String) {
-        keyboardView(view, insertAlternate: text)
+        keyboardView(view, insertAlternate: caseForShift(text))
+    }
+
+    /// An English letter from a key is typed in the case Shift is in right now, not the case drawn on
+    /// the key: typing fast, the next key can be pressed before the keys are redrawn after Shift goes off.
+    private func caseForShift(_ text: String) -> String {
+        guard text.count == 1, let ch = text.first, ch.isASCII, ch.isLetter else { return text }
+        return shift == .off ? text.lowercased() : text.uppercased()
     }
 
     func keyboardView(_ view: KeyboardView, insertAlternate text: String) {
