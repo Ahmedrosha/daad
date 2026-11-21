@@ -49,7 +49,7 @@ jobs:
               -c "Add :pinnedTexts:1 string 'عنواني: ١٢ شارع النيل، القاهرة'" "$PL" || true
           fi
           for LANG in ar en; do
-            for SHOT in home settings shortcuts pinned bar; do
+            for SHOT in home settings shortcuts pinned bar memory; do
               xcrun simctl terminate "$SIM" com.daad.keyboard || true
               xcrun simctl launch "$SIM" com.daad.keyboard -appLanguage $LANG -shot $SHOT
               sleep 7

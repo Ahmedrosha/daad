@@ -374,3 +374,75 @@ final class SharedSettings {
         set { defaults.set(newValue.map(\.rawValue), forKey: Keys.enabledModes) }
     }
 }
+
+/// The keyboard's memory use, written by the keyboard (with Full Access) and shown in the app.
+enum MemoryReport {
+    static let nowKey = "diagMemoryNowMB"
+    static let peakKey = "diagMemoryPeakMB"
+    static let dateKey = "diagMemoryDate"
+
+    /// Memory this process uses now, in MB (what iOS counts against the keyboard's limit).
+    static func footprintMB() -> Double {
+        var info = task_vm_info_data_t()
+        var count = mach_msg_type_number_t(MemoryLayout<task_vm_info_data_t>.size / MemoryLayout<natural_t>.size)
+        let kr = withUnsafeMutablePointer(to: &info) {
+            $0.withMemoryRebound(to: integer_t.self, capacity: Int(count)) {
+                task_info(mach_task_self_, task_flavor_t(TASK_VM_INFO), $0, &count)
+            }
+        }
+        return kr == KERN_SUCCESS ? Double(info.phys_footprint) / 1_048_576 : 0
+    }
+
+    static let logKey = "diagMemoryLog"
+    static let peakEventKey = "diagMemoryPeakEvent"
+    static let logLimit = 20
+
+    /// One reading: when, how much, what the keyboard was doing and how long the text in the box was.
+    struct Entry {
+        let date: Date
+        let mb: Double
+        let event: String
+        let textLength: Int
+
+        var line: String { "\(date.timeIntervalSince1970)|\(mb)|\(textLength)|\(event)" }
+
+        init(date: Date, mb: Double, event: String, textLength: Int) {
+            self.date = date; self.mb = mb; self.event = event; self.textLength = textLength
+        }
+
+        init?(line: String) {
+            let parts = line.split(separator: "|", maxSplits: 3, omittingEmptySubsequences: false)
+            guard parts.count == 4, let t = Double(parts[0]), let mb = Double(parts[1]), let n = Int(parts[2]) else { return nil }
+            self.init(date: Date(timeIntervalSince1970: t), mb: mb, event: String(parts[3]), textLength: n)
+        }
+    }
+
+    static func record(in defaults: UserDefaults, event: String = "", textLength: Int = 0) {
+        let now = footprintMB()
+        guard now > 0 else { return }
+        defaults.set(now, forKey: nowKey)
+        if now > defaults.double(forKey: peakKey) {
+            defaults.set(now, forKey: peakKey)
+            defaults.set(Entry(date: Date(), mb: now, event: event, textLength: textLength).line, forKey: peakEventKey)
+        }
+        defaults.set(Date().timeIntervalSince1970, forKey: dateKey)
+        var log = defaults.stringArray(forKey: logKey) ?? []
+        log.append(Entry(date: Date(), mb: now, event: event, textLength: textLength).line)
+        if log.count > logLimit { log.removeFirst(log.count - logLimit) }
+        defaults.set(log, forKey: logKey)
+    }
+
+    static func log(in defaults: UserDefaults?) -> [Entry] {
+        (defaults?.stringArray(forKey: logKey) ?? []).compactMap(Entry.init(line:))
+    }
+
+    static func peakEntry(in defaults: UserDefaults?) -> Entry? {
+        defaults?.string(forKey: peakEventKey).flatMap(Entry.init(line:))
+    }
+
+    static func reset(in defaults: UserDefaults?) {
+        defaults?.set(0, forKey: peakKey)
+        defaults?.removeObject(forKey: peakEventKey)
+        defaults?.removeObject(forKey: logKey)
+    }
+}

@@ -61,12 +61,13 @@ final class KeyboardView: UIView {
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func configure(rows: [KeyRow], maxUnits: CGFloat, theme: KeyboardTheme, look: KeyLook = KeyLook()) {
-        // Same keys in the same places (only letters changed, e.g. Shift): update them in place.
+        // Same keys in the same places (only letters or colours changed, e.g. Shift): update them in place.
+        // A key's colour (Shift on/off) is redrawn by the key itself; rebuilding would cancel fingers.
         let sameShape = self.theme == theme && currentLook == look && self.maxUnits == maxUnits
             && rowViews.count == rows.count
             && zip(self.rows, rows).allSatisfy { old, new in
                 old.rightToLeft == new.rightToLeft && old.keys.count == new.keys.count
-                    && zip(old.keys, new.keys).allSatisfy { $0.width == $1.width && $0.style == $1.style }
+                    && zip(old.keys, new.keys).allSatisfy { $0.width == $1.width }
             }
         self.rows = rows
         self.maxUnits = maxUnits
