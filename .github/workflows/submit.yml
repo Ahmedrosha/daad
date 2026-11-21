@@ -1,0 +1,32 @@
+name: Send to App Review
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App Store version (e.g. 1.1.2)"
+        required: true
+      build:
+        description: "Build number (e.g. 62)"
+        required: true
+      dry_run:
+        description: "1 = only show what would happen"
+        required: true
+        default: "1"
+
+jobs:
+  submit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Send for review
+        env:
+          KID: ${{ secrets.ASC_KEY_ID }}
+          ISS: ${{ secrets.ASC_ISSUER_ID }}
+          KEY: ${{ secrets.ASC_PRIVATE_KEY }}
+          VERSION: ${{ inputs.version }}
+          BUILD: ${{ inputs.build }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          printf '%s' "$KEY" > key.p8
+          KEY_PATH=key.p8 ruby scripts/asc_submit.rb
