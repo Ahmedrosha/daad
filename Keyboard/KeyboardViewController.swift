@@ -1250,16 +1250,6 @@ final class KeyboardViewController: UIInputViewController {
             reload()
             return
         }
-        // (ع+En): the first letter of a message tells the app which language it is in. Some apps
-        // (WhatsApp) lay the whole message out by the keyboard's language rather than by the text, so
-        // English would start on the right. Only in an empty box: at most one change per message, never
-        // one per letter (apps redo their layout each time they are told).
-        if inputMode == .dual, let first = text.first, first.isLetter,
-           (proxy.documentContextBeforeInput ?? "").isEmpty,
-           (proxy.documentContextAfterInput ?? "").isEmpty {
-            let code = TextHelpers.isArabic(first) ? "ar" : "en-US"
-            if primaryLanguage != code { primaryLanguage = code }
-        }
         // The invisible right-to-left mark only goes before Arabic letters, and never in a search box
         // (it would become part of what's searched for).
         if settings.bool(.rtlMark), !searchField, let first = text.first, TextHelpers.isArabic(first),
