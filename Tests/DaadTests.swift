@@ -348,4 +348,25 @@ final class DaadTests: XCTestCase {
         XCTAssertEqual(arabic.key, "١٢٣")
         XCTAssertTrue(arabic.page.contains("؟") && arabic.page.contains("،"))
     }
+
+    func testDualEnglishLookNarrowsTheArabicOnlyKeys() {
+        func rows(_ look: DualLook) -> [KeyRow] {
+            var c = context(.arabic)
+            c.dual = true; c.dualLook = look
+            return Layouts.build(c).rows
+        }
+        func key(_ rows: [KeyRow], _ arabic: String) -> Key? {
+            rows.flatMap { $0.keys }.first { if case .character(let t) = $0.action { return t == arabic }; return false }
+        }
+        let english = rows(.englishBig), arabic = rows(.arabicBig)
+        let jeemE = key(english, "ج"), jeemA = key(arabic, "ج")
+        XCTAssertNotNil(jeemE); XCTAssertNotNil(jeemA)
+        XCTAssertEqual(jeemE!.width, jeemA!.width / 2, accuracy: 0.001)
+        XCTAssertEqual(jeemE!.style, .special)
+        XCTAssertEqual(jeemA!.style, .normal)
+        // Each row keeps its total width: the English keys take the room.
+        for (e, a) in zip(english, arabic) {
+            XCTAssertEqual(e.keys.reduce(0) { $0 + $1.width }, a.keys.reduce(0) { $0 + $1.width }, accuracy: 0.001)
+        }
+    }
 }

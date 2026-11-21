@@ -118,6 +118,27 @@ enum Layouts {
                 }
                 i += 1
             }
+            // English big: the Arabic letters with no English letter on them (ج ك ة و ى) are drawn
+            // half as wide and in the special-key colour, and the English keys share the room freed.
+            if look.tapsEnglish {
+                var extras: [Int] = [], letters: [Int] = []
+                var n = 0
+                for k in rows[r].keys.indices {
+                    guard case .character(let t) = rows[r].keys[k].action, t.first?.isLetter ?? false else { continue }
+                    if n < sets[letterRow].count { letters.append(k) } else { extras.append(k) }
+                    n += 1
+                }
+                if !extras.isEmpty, !letters.isEmpty {
+                    var freed: CGFloat = 0
+                    for k in extras {
+                        freed += rows[r].keys[k].width / 2
+                        rows[r].keys[k].width /= 2
+                        rows[r].keys[k].style = .special
+                    }
+                    let share = freed / CGFloat(letters.count)
+                    for k in letters { rows[r].keys[k].width += share }
+                }
+            }
             letterRow += 1
         }
     }
