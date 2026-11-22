@@ -71,6 +71,8 @@ final class SuggestionBarView: UIView {
         toolScroll.showsHorizontalScrollIndicator = false
         toolScroll.delaysContentTouches = false
         toolScroll.alwaysBounceHorizontal = false
+        toolScroll.decelerationRate = .fast
+        toolScroll.delegate = self
         addSubview(toolScroll)
         swapButton.addTarget(self, action: #selector(swapTapped), for: .touchUpInside)
         swapButton.isHidden = true
@@ -230,8 +232,12 @@ final class SuggestionBarView: UIView {
         let swapW: CGFloat = swapButton.isHidden ? 0 : 30
         swapButton.frame = CGRect(x: bounds.width - 4 - swapW, y: 0, width: swapW, height: h)
         // Tool buttons: right-aligned when they fit, otherwise the strip scrolls sideways.
-        toolScroll.frame = CGRect(x: 96, y: 0, width: max(0, bounds.width - 100 - swapW), height: h)
-        let w: CGFloat = 40
+        // The visible strip is a whole number of buttons wide (sitting at the right end), so no button
+        // is ever cut in half at its edge; scrolling stops on whole buttons too (see the delegate below).
+        let w: CGFloat = SuggestionBarView.toolWidth
+        let room = max(0, bounds.width - 100 - swapW)
+        let fits = itemButtons.count * Int(w) > Int(room) ? (room / w).rounded(.down) * w : room
+        toolScroll.frame = CGRect(x: 96 + room - fits, y: 0, width: fits, height: h)
         let total = w * CGFloat(itemButtons.count)
         let lead = max(0, toolScroll.bounds.width - total)
         for (i, entry) in itemButtons.enumerated() {
@@ -288,5 +294,19 @@ final class SuggestionBarView: UIView {
     @objc private func suggestionTapped(_ sender: UIButton) {
         guard values.indices.contains(sender.tag) else { return }
         onSuggestion?(values[sender.tag])
+    }
+}
+
+extension SuggestionBarView: UIScrollViewDelegate {
+    static let toolWidth: CGFloat = 40
+
+    /// Scrolling the tools stops on whole buttons, counted from the right end (where the strip starts).
+    func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint,
+                                   targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+        let end = scrollView.contentSize.width - scrollView.bounds.width
+        guard end > 0 else { return }
+        let w = SuggestionBarView.toolWidth
+        let fromEnd = ((end - targetContentOffset.pointee.x) / w).rounded() * w
+        targetContentOffset.pointee.x = min(end, max(0, end - fromEnd))
     }
 }

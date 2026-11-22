@@ -1343,7 +1343,7 @@ final class KeyboardViewController: UIInputViewController {
         // moment for the app to move the cursor, then is typed; keys pressed meanwhile follow in order.
         // The side is the keyboard's own note (never read back from iOS), so after the flip it matches
         // and the letter goes straight in.
-        if inputMode == .dual, !searchField, !holdingForLanguage, let first = text.first, first.isLetter,
+        if inputMode == .dual, !holdingForLanguage, let first = text.first, first.isLetter,
            (proxy.documentContextBeforeInput ?? "").isEmpty,
            (proxy.documentContextAfterInput ?? "").isEmpty {
             let arabic = TextHelpers.isArabic(first)
