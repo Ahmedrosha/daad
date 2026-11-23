@@ -10,6 +10,12 @@ VERSION = ENV.fetch("VERSION")
 BUILD = ENV.fetch("BUILD")
 DRY = ENV["DRY_RUN"] == "1"
 
+# What's New: whats_new/<version>-ar.txt and -en.txt when present, otherwise the text below.
+def whats_new_file(lang)
+  path = File.join(__dir__, "..", "whats_new", "#{VERSION}-#{lang}.txt")
+  File.exist?(path) ? File.read(path).strip : nil
+end
+
 WHATS_NEW = {
   "ar" => <<~TEXT.strip,
     - الكيبورد بقى أخف وأسرع، والذاكرة أقل.
@@ -90,7 +96,9 @@ abort "Version #{VERSION} is #{state}: not editable, nothing sent" unless editab
 locs = api("GET", "/v1/appStoreVersions/#{version["id"]}/appStoreVersionLocalizations")["data"]
 locs.each do |l|
   locale = l["attributes"]["locale"]
-  text = locale.start_with?("ar") ? WHATS_NEW["ar"] : WHATS_NEW["en"]
+  lang = locale.start_with?("ar") ? "ar" : "en"
+  text = whats_new_file(lang) || WHATS_NEW[lang]
+  puts "  #{locale}: #{text.lines.first&.strip} ..."
   change("set What's New for #{locale}") do
     api("PATCH", "/v1/appStoreVersionLocalizations/#{l["id"]}",
         { data: { type: "appStoreVersionLocalizations", id: l["id"], attributes: { whatsNew: text } } })

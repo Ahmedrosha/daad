@@ -1,0 +1,3 @@
+- English + العربية: search boxes now switch sides with the language you type, like the message box.
+- The tools bar shows whole icons only and no longer stops on a cut-off one.
+- Other fixes and improvements.
