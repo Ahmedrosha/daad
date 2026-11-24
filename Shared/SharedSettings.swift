@@ -417,7 +417,9 @@ enum MemoryReport {
         }
     }
 
-    static func record(in defaults: UserDefaults, event: String = "", textLength: Int = 0) {
+    /// `merge`: the same event again within 3 seconds updates the last line ("memory warning ×12")
+    /// instead of pushing the other readings out of the list.
+    static func record(in defaults: UserDefaults, event: String = "", textLength: Int = 0, merge: Bool = false) {
         let now = footprintMB()
         guard now > 0 else { return }
         defaults.set(now, forKey: nowKey)
@@ -427,6 +429,14 @@ enum MemoryReport {
         }
         defaults.set(Date().timeIntervalSince1970, forKey: dateKey)
         var log = defaults.stringArray(forKey: logKey) ?? []
+        if merge, let lastLine = log.last, let last = Entry(line: lastLine),
+           Date().timeIntervalSince(last.date) < 3,
+           last.event == event || last.event.hasPrefix(event + " ×") {
+            let times = (last.event == event ? 1 : Int(last.event.dropFirst(event.count + 2)) ?? 1) + 1
+            log[log.count - 1] = Entry(date: Date(), mb: now, event: "\(event) ×\(times)", textLength: textLength).line
+            defaults.set(log, forKey: logKey)
+            return
+        }
         log.append(Entry(date: Date(), mb: now, event: event, textLength: textLength).line)
         if log.count > logLimit { log.removeFirst(log.count - logLimit) }
         defaults.set(log, forKey: logKey)

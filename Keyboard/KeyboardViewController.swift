@@ -108,6 +108,11 @@ final class KeyboardViewController: UIInputViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
+        KeyboardViewController.live += 1
+        if !KeyboardViewController.processStarted {
+            KeyboardViewController.processStarted = true
+            recordMemory("keyboard started from scratch")
+        }
         inputMode = settings.inputMode
         if !settings.enabledModes.contains(inputMode) { inputMode = settings.enabledModes[0] }
         language = inputMode.language
@@ -186,6 +191,7 @@ final class KeyboardViewController: UIInputViewController {
         refreshShortcuts()
         reload(force: true)
         setUpLockView()
+        recordMemory("keys and panels built")
     }
 
     // MARK: Trial / purchase lock
@@ -256,7 +262,7 @@ final class KeyboardViewController: UIInputViewController {
         if settings.bool(.haptics) && hasFullAccess { tapHaptic.prepare() }
         updateBackgroundImage()
         loadAccess()
-        recordMemory("open, clipboard \(clipboard.items.count) items / \(clipboard.items.reduce(0) { $0 + $1.count }) chars")
+        recordMemory("open, \(KeyboardViewController.live) keyboard copies alive, clipboard \(clipboard.items.count) items / \(clipboard.items.reduce(0) { $0 + $1.count }) chars")
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -1265,7 +1271,7 @@ final class KeyboardViewController: UIInputViewController {
 
     /// Saves the keyboard's memory use, with what it was doing, for the app's Settings → Keyboard
     /// memory (needs Full Access). Frequent events (selection) are kept to one reading a second.
-    private func recordMemory(_ event: String, always: Bool = true) {
+    private func recordMemory(_ event: String, always: Bool = true, merge: Bool = false) {
         guard hasFullAccess, let group = SharedSettings.store else { return }
         let now = Date()
         guard always || now.timeIntervalSince(lastMemoryRecord) >= 1 else { return }
@@ -1273,16 +1279,23 @@ final class KeyboardViewController: UIInputViewController {
         let proxy = textDocumentProxy
         let length = (proxy.documentContextBeforeInput?.count ?? 0) + (proxy.selectedText?.count ?? 0)
             + (proxy.documentContextAfterInput?.count ?? 0)
-        MemoryReport.record(in: group, event: event, textLength: length)
+        MemoryReport.record(in: group, event: event, textLength: length, merge: merge)
     }
+
+    /// How many keyboard controllers exist now: iOS makes a new one each time the keyboard opens and
+    /// should let the old one go. More than one or two means old ones are kept alive.
+    static var live = 0
+    static var processStarted = false
+
+    deinit { KeyboardViewController.live -= 1 }
 
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
-        recordMemory("memory warning")
         // Let go of what isn't in use (read again when needed): the other language's words, the Franco
         // index and the next-word tables. What is being typed with stays.
         lexicon.trim(keeping: inputMode == .dual ? [.arabic, .english] : [language])
         URLCache.shared.removeAllCachedResponses()
+        recordMemory("memory warning (reading after cleanup)", merge: true)
     }
 
     // MARK: Plain typing (passwords, codes, e-mail, Remote Desktop)
