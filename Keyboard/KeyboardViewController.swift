@@ -280,6 +280,10 @@ final class KeyboardViewController: UIInputViewController {
 
     /// The side the app was last told to write on (see the ⇄ key).
     private var directionArabic = true
+
+    /// (ع+En): the language of the last letter typed (or picked with ⇄ in an empty box), kept between
+    /// openings of the keyboard.
+    private var lastTypedLanguage: DaadLanguage = UserDefaults.standard.string(forKey: "dualLastLanguage") == "en" ? .english : .arabic
     /// While the app is being told a new side before the first letter, keys wait here, in order.
     private var holdingForLanguage = false
     private var heldKeys: [() -> Void] = []
@@ -1631,10 +1635,6 @@ extension KeyboardViewController: KeyboardViewDelegate {
         // the keyboard the current line, so go by the language typed last instead of the corners look.
         settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? "") ?? lastTypedLanguage)
     }
-
-    /// (ع+En): the language of the last letter typed (or picked with ⇄ in an empty box), kept between
-    /// openings of the keyboard.
-    private var lastTypedLanguage: DaadLanguage = UserDefaults.standard.string(forKey: "dualLastLanguage") == "en" ? .english : .arabic
 
     private func setInputMode(_ new: InputMode, refresh: Bool = true) {
         inputMode = new
