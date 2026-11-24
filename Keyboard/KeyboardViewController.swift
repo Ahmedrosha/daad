@@ -288,6 +288,7 @@ final class KeyboardViewController: UIInputViewController {
         super.viewWillDisappear(animated)
         holdingForLanguage = false
         heldKeys = []
+        UserDefaults.standard.set(lastTypedLanguage == .english ? "en" : "ar", forKey: "dualLastLanguage")
         lexicon.flush()
         recordMemory("close")
     }
@@ -1364,6 +1365,7 @@ final class KeyboardViewController: UIInputViewController {
                 return
             }
         }
+        if let first = text.first, first.isLetter { lastTypedLanguage = TextHelpers.isArabic(first) ? .arabic : .english }
         insertsSinceMemoryCheck += 1
         if insertsSinceMemoryCheck >= 100 { insertsSinceMemoryCheck = 0; recordMemory("typing") }
         if let first = text.first, !first.isLetter { commitWordBeforePunctuation() }
@@ -1547,6 +1549,12 @@ extension KeyboardViewController: KeyboardViewDelegate {
                 // Told once per press; the keyboard keeps its own note and never reads the value back.
                 directionArabic.toggle()
                 primaryLanguage = directionArabic ? "ar" : "en-US"
+                // With no letter before the cursor, the keys and digits follow the side picked.
+                if Self.languageBefore(proxy.documentContextBeforeInput ?? "") == nil {
+                    lastTypedLanguage = directionArabic ? .arabic : .english
+                    updateAutoShift()
+                    reload()
+                }
             case .arrow(let direction):
                 switch direction {
                 case .left: proxy.adjustTextPosition(byCharacterOffset: textIsRightToLeft ? 1 : -1)
@@ -1619,8 +1627,14 @@ extension KeyboardViewController: KeyboardViewDelegate {
 
     /// How the letters sit on (ع+En) right now (the automatic look follows the last letter typed).
     private var currentDualLook: DualLook {
-        settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? ""))
+        // No letter before the cursor (empty box, a new line, a message just sent): most apps only show
+        // the keyboard the current line, so go by the language typed last instead of the corners look.
+        settings.dualLook.resolved(lastLetter: Self.languageBefore(proxy.documentContextBeforeInput ?? "") ?? lastTypedLanguage)
     }
+
+    /// (ع+En): the language of the last letter typed (or picked with ⇄ in an empty box), kept between
+    /// openings of the keyboard.
+    private var lastTypedLanguage: DaadLanguage = UserDefaults.standard.string(forKey: "dualLastLanguage") == "en" ? .english : .arabic
 
     private func setInputMode(_ new: InputMode, refresh: Bool = true) {
         inputMode = new
