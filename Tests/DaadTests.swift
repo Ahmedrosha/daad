@@ -230,7 +230,8 @@ final class DaadTests: XCTestCase {
 
     func testSpeedOfSuggestions() {
         let lexicon = Lexicon()
-        _ = lexicon.isKnown("خلصت", language: .arabic)
+        let load = milliseconds { _ = lexicon.isKnown("خلصت", language: .arabic) }
+        print("TIMING Arabic word list load: \(String(format: "%.0f", load)) ms (once)")
         _ = lexicon.isKnown("hello", language: .english)
         // One-time loads (next-word tables) are timed apart from the per-key cost.
         let firstLoad = milliseconds {
