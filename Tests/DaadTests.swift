@@ -370,4 +370,33 @@ final class DaadTests: XCTestCase {
             XCTAssertEqual(e.keys.reduce(0) { $0 + $1.width }, a.keys.reduce(0) { $0 + $1.width }, accuracy: 0.001)
         }
     }
+
+    /// The ready files built by scripts/dictgen must hold exactly what the text files give.
+    func testPrebuiltWordListsMatchTheTextFiles() {
+        for language in [DaadLanguage.arabic, .english] {
+            guard let pre = Lexicon.prebuiltWords(language) else { XCTFail("dict file missing for \(language)"); continue }
+            let built = Lexicon.buildWords(language)
+            print("DICT \(language): \(pre.count) words")
+            XCTAssertEqual(pre.count, built.count)
+            XCTAssertEqual(pre.top, built.top)
+            for i in stride(from: 0, to: built.count, by: 53) {
+                let w = built.word(i)
+                XCTAssertEqual(pre.word(i), w)
+                XCTAssertEqual(pre.count(at: i), built.count(at: i))
+                XCTAssertEqual(pre.count(of: w), built.count(of: w))
+                XCTAssertNil(pre.count(of: w + "qq"))
+            }
+            for i in stride(from: 0, to: built.count, by: 911) {
+                let w = built.word(i)
+                for n in 1...min(3, w.count) {
+                    let p = Lexicon.normalize(String(w.prefix(n)))
+                    XCTAssertEqual(pre.indexes(withPrefix: p, limit: 26), built.indexes(withPrefix: p, limit: 26), p)
+                }
+                let form = Lexicon.normalize(w)
+                XCTAssertEqual(pre.indexes(withNormalized: form), built.indexes(withNormalized: form))
+            }
+            let keys: Set<UInt16> = Set((language == .arabic ? "ابتمل" : "thsae").map(WordList.keyCode))
+            XCTAssertEqual(pre.indexes(firstKeys: keys, lastKeys: keys), built.indexes(firstKeys: keys, lastKeys: keys))
+        }
+    }
 }

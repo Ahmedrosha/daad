@@ -1,9 +1,9 @@
 import Foundation
 
-/// A word list packed into a few flat arrays instead of one String object per word.
-/// 100,000 Arabic words take about a third of the memory this way, and loading makes no big copies.
-/// Words are kept most frequent first.
-final class WordList {
+/// Builds a word list from the bundled text files into a few flat arrays, then writes it out in the
+/// layout `WordList` reads. Used at build time (scripts/dictgen, so the keyboard opens a ready file)
+/// and, if that file is missing, by the keyboard itself. Words are kept most frequent first.
+final class WordListBuilder {
     private var bytes: [UInt8] = []        // UTF-8 of every word, back to back
     private var starts: [Int32] = [0]      // word i is bytes[starts[i] ..< starts[i + 1]]
     private var norm: [UInt8] = []         // the loose (normalized) form of every word, same layout
@@ -125,9 +125,9 @@ final class WordList {
     init(file url: URL?, expected: Int) {
         reserve(expected)
         guard let url, let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return }
-        WordList.forEachLine(data) { line in
+        WordListBuilder.forEachLine(data) { line in
             guard let space = line.firstIndex(of: 0x20),
-                  let n = WordList.parseInt(line[(space + 1)...]) else { return }
+                  let n = WordListBuilder.parseInt(line[(space + 1)...]) else { return }
             let word = Array(line[..<space])
             guard !word.isEmpty, index(of: word) == nil else { return }
             append(word, count: n)
@@ -138,11 +138,11 @@ final class WordList {
     /// at its own count when that's higher. Call `sortByCount()` afterwards.
     func merge(file url: URL?, boost: (Int) -> Int) {
         guard let url, let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return }
-        WordList.forEachLine(data) { line in
+        WordListBuilder.forEachLine(data) { line in
             let space = line.firstIndex(of: 0x20)
             let word = Array(space.map { line[..<$0] } ?? line[...])
             guard !word.isEmpty else { return }
-            let tier = space.flatMap { WordList.parseInt(line[($0 + 1)...]) } ?? 1
+            let tier = space.flatMap { WordListBuilder.parseInt(line[($0 + 1)...]) } ?? 1
             let n = boost(max(tier, 1))
             if let i = index(of: word) {
                 counts[i] = max(counts[i], Int32(clamping: n))
@@ -185,10 +185,10 @@ final class WordList {
         bytes.append(contentsOf: word)
         starts.append(Int32(bytes.count))
         let text = String(decoding: word, as: UTF8.self)
-        let loose = Lexicon.normalize(text)
-        let letters = GlideDecoder.keyLetters(of: text, language: .arabic)
-        firstKey.append(letters.first.map(WordList.keyCode) ?? 0)
-        lastKey.append(letters.last.map(WordList.keyCode) ?? 0)
+        let loose = TextFold.normalize(text)
+        let letters = TextFold.keyLetters(of: text)
+        firstKey.append(letters.first.map(WordListBuilder.keyCode) ?? 0)
+        lastKey.append(letters.last.map(WordListBuilder.keyCode) ?? 0)
         norm.append(contentsOf: loose.utf8)
         normStarts.append(Int32(norm.count))
         counts.append(Int32(clamping: n))
@@ -210,7 +210,7 @@ final class WordList {
 
     // MARK: Hashing
 
-    private static func hash<C: Collection>(_ bytes: C) -> Int where C.Element == UInt8 {
+    static func hash<C: Collection>(_ bytes: C) -> Int where C.Element == UInt8 {
         var h: UInt64 = 0xcbf29ce484222325           // FNV-1a
         for b in bytes { h = (h ^ UInt64(b)) &* 0x100000001b3 }
         return Int(truncatingIfNeeded: h)
@@ -218,7 +218,7 @@ final class WordList {
 
     private func insertSlot(_ i: Int) {
         let mask = slots.count - 1
-        var j = WordList.hash(bytes[Int(starts[i]) ..< Int(starts[i + 1])]) & mask
+        var j = WordListBuilder.hash(bytes[Int(starts[i]) ..< Int(starts[i + 1])]) & mask
         while slots[j] != 0 { j = (j + 1) & mask }
         slots[j] = Int32(i + 1)
     }
@@ -226,7 +226,7 @@ final class WordList {
     private func index<C: Collection>(of word: C) -> Int? where C.Element == UInt8 {
         guard !slots.isEmpty else { return nil }
         let mask = slots.count - 1
-        var j = WordList.hash(word) & mask
+        var j = WordListBuilder.hash(word) & mask
         while slots[j] != 0 {
             let i = Int(slots[j]) - 1
             let s = Int(starts[i]), e = Int(starts[i + 1])
@@ -235,6 +235,38 @@ final class WordList {
         }
         return nil
     }
+
+    // MARK: The bundled lists
+
+    /// The Arabic list (with the Egyptian words merged in) or the English one, as the keyboard uses it.
+    static func make(main: URL?, egyptian: URL?, arabic: Bool) -> WordListBuilder {
+        let list = WordListBuilder(file: main, expected: arabic ? 105_000 : 50_000)
+        // Everyday Egyptian words that subtitles rarely contain, ranked as fairly common.
+        // "word" = everyday word, ranked high; "word 3" = a generated verb form, ranked a bit lower.
+        if arabic {
+            let top = list.top
+            list.merge(file: egyptian) { tier in max(top / (40 * tier), 1) }
+            list.sortByCount()
+        }
+        list.buildIndexes()
+        return list
+    }
+
+    /// The list in `WordList`'s file layout (see there).
+    func serialize() -> Data {
+        var d = Data()
+        func put<T>(_ a: [T]) { a.withUnsafeBytes { d.append(contentsOf: $0) } }
+        put([WordList.magic, WordList.version, UInt32(count), UInt32(clamping: top), UInt32(slots.count),
+             UInt32(bytes.count), UInt32(norm.count), 0])
+        put(starts); put(normStarts); put(counts); put(slots); put(byNorm); put(firstKey); put(lastKey)
+        while d.count % 4 != 0 { d.append(0) }
+        d.append(contentsOf: bytes)
+        d.append(contentsOf: norm)
+        return d
+    }
+
+    /// Ready to read (a copy in memory; the keyboard normally maps the prebuilt file instead).
+    func finish() -> WordList { WordList(data: serialize())! }
 
     // MARK: Parsing without copying the file
 
@@ -262,6 +294,174 @@ final class WordList {
     }
 }
 
+/// A word list ready to read, laid out as one block of memory, most frequent word first. The keyboard
+/// maps the file built at build time (dict_ar.bin / dict_en.bin): nothing is parsed or copied on
+/// opening, and iOS can drop and re-read the mapped pages instead of counting them against the
+/// keyboard's memory.
+///
+/// Layout (little-endian): 8 UInt32 header (magic, version, count, top, slot count, bytes length,
+/// loose-forms length, 0), then Int32 starts[count+1], normStarts[count+1], counts[count],
+/// slots[slot count], byNorm[count], UInt16 firstKey[count], lastKey[count], padding to 4,
+/// the UTF-8 words back to back, the loose forms back to back.
+final class WordList {
+    static let magic: UInt32 = 0x4441_4144      // "DAAD"
+    static let version: UInt32 = 1
+
+    let count: Int
+    let top: Int
+    private let starts, normStarts, counts, slots, byNorm: UnsafeBufferPointer<Int32>
+    private let firstKey, lastKey: UnsafeBufferPointer<UInt16>
+    private let bytes, norm: UnsafeBufferPointer<UInt8>
+    private let release: () -> Void
+
+    /// Maps a prebuilt file; nil if it's missing or not in this layout.
+    convenience init?(mapping url: URL) {
+        let fd = open(url.path, O_RDONLY)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, st.st_size > 32 else { return nil }
+        let size = Int(st.st_size)
+        guard let p = mmap(nil, size, PROT_READ, MAP_PRIVATE, fd, 0), p != MAP_FAILED else { return nil }
+        self.init(base: UnsafeRawPointer(p), length: size) { munmap(p, size) }
+    }
+
+    /// Reads a list from bytes in this layout (kept in a private copy).
+    convenience init?(data: Data) {
+        let size = data.count
+        let p = UnsafeMutableRawPointer.allocate(byteCount: max(size, 1), alignment: 8)
+        data.withUnsafeBytes { if let b = $0.baseAddress { p.copyMemory(from: b, byteCount: size) } }
+        self.init(base: UnsafeRawPointer(p), length: size) { p.deallocate() }
+    }
+
+    private init?(base: UnsafeRawPointer, length: Int, release: @escaping () -> Void) {
+        func fail() -> Bool { release(); return false }
+        guard length >= 32 else { _ = fail(); return nil }
+        let h = UnsafeBufferPointer(start: base.assumingMemoryBound(to: UInt32.self), count: 8)
+        guard h[0] == WordList.magic, h[1] == WordList.version else { _ = fail(); return nil }
+        let n = Int(h[2]), slotCount = Int(h[4]), bytesLen = Int(h[5]), normLen = Int(h[6])
+        var offset = 32
+        func ints(_ k: Int) -> UnsafeBufferPointer<Int32> {
+            defer { offset += k * 4 }
+            return UnsafeBufferPointer(start: (base + offset).assumingMemoryBound(to: Int32.self), count: k)
+        }
+        func shorts(_ k: Int) -> UnsafeBufferPointer<UInt16> {
+            defer { offset += k * 2 }
+            return UnsafeBufferPointer(start: (base + offset).assumingMemoryBound(to: UInt16.self), count: k)
+        }
+        func raw(_ k: Int) -> UnsafeBufferPointer<UInt8> {
+            defer { offset += k }
+            return UnsafeBufferPointer(start: (base + offset).assumingMemoryBound(to: UInt8.self), count: k)
+        }
+        let expected = 32 + (n + 1) * 8 + n * 4 + slotCount * 4 + n * 4 + n * 4
+        let padded = (expected + 3) / 4 * 4
+        guard padded + bytesLen + normLen <= length, slotCount > 0, slotCount & (slotCount - 1) == 0 else {
+            _ = fail(); return nil
+        }
+        count = n
+        top = Int(h[3])
+        starts = ints(n + 1); normStarts = ints(n + 1); counts = ints(n); slots = ints(slotCount); byNorm = ints(n)
+        firstKey = shorts(n); lastKey = shorts(n)
+        offset = padded
+        bytes = raw(bytesLen); norm = raw(normLen)
+        self.release = release
+    }
+
+    deinit { release() }
+
+    // MARK: Reading
+
+    func word(_ i: Int) -> String {
+        String(decoding: UnsafeBufferPointer(rebasing: bytes[Int(starts[i]) ..< Int(starts[i + 1])]), as: UTF8.self)
+    }
+
+    func count(at i: Int) -> Int { Int(counts[i]) }
+
+    /// How common the word is, or nil when it isn't in the list.
+    func count(of word: String) -> Int? {
+        var w = word
+        return w.withUTF8 { index(of: $0) }.map { Int(counts[$0]) }
+    }
+
+    /// A keyboard letter as a small number (0 = not a single simple letter).
+    static func keyCode(_ ch: Character) -> UInt16 { WordListBuilder.keyCode(ch) }
+
+    private func compareNorm(_ i: Int, with p: [UInt8], prefixOnly: Bool) -> Int {
+        let s = Int(normStarts[i]), n = Int(normStarts[i + 1]) - s
+        let m = min(n, p.count)
+        for k in 0 ..< m where norm[s + k] != p[k] { return norm[s + k] < p[k] ? -1 : 1 }
+        if n < p.count { return -1 }
+        return prefixOnly || n == p.count ? 0 : 1
+    }
+
+    private func prefixRange(_ p: [UInt8]) -> Range<Int> {
+        var lo = 0, hi = byNorm.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if compareNorm(Int(byNorm[mid]), with: p, prefixOnly: true) < 0 { lo = mid + 1 } else { hi = mid }
+        }
+        let start = lo
+        hi = byNorm.count
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if compareNorm(Int(byNorm[mid]), with: p, prefixOnly: true) <= 0 { lo = mid + 1 } else { hi = mid }
+        }
+        return start ..< lo
+    }
+
+    /// The most frequent words whose loose form starts with `prefix` (word indexes, most frequent first).
+    func indexes(withPrefix prefix: String, limit: Int) -> [Int] {
+        let p = Array(prefix.utf8)
+        guard !p.isEmpty else { return [] }
+        let range = prefixRange(p)
+        guard !range.isEmpty else { return [] }
+        if range.count <= limit { return byNorm[range].map { Int($0) }.sorted() }
+        var best: [Int32] = []
+        best.reserveCapacity(limit + 1)
+        var worst = Int32.max
+        for pos in range {
+            let i = byNorm[pos]
+            if best.count < limit {
+                best.append(i)
+                if best.count == limit { best.sort(); worst = best[limit - 1] }
+            } else if i < worst {
+                let at = best.firstIndex { $0 > i } ?? limit - 1
+                best.insert(i, at: at)
+                best.removeLast()
+                worst = best[limit - 1]
+            }
+        }
+        if best.count < limit { best.sort() }
+        return best.map { Int($0) }
+    }
+
+    /// Words whose loose form is exactly `form` (word indexes).
+    func indexes(withNormalized form: String) -> [Int] {
+        let p = Array(form.utf8)
+        guard !p.isEmpty else { return [] }
+        return byNorm[prefixRange(p)].map { Int($0) }.filter { Int(normStarts[$0 + 1] - normStarts[$0]) == p.count }
+    }
+
+    /// Words that start and end on these keys (word indexes), for glide typing.
+    func indexes(firstKeys: Set<UInt16>, lastKeys: Set<UInt16>) -> [Int] {
+        var out: [Int] = []
+        for i in 0 ..< count where firstKeys.contains(firstKey[i]) && lastKeys.contains(lastKey[i]) { out.append(i) }
+        return out
+    }
+
+    private func index<C: Collection>(of word: C) -> Int? where C.Element == UInt8 {
+        let mask = slots.count - 1
+        var j = WordListBuilder.hash(word) & mask
+        while slots[j] != 0 {
+            let i = Int(slots[j]) - 1
+            let s = Int(starts[i]), e = Int(starts[i + 1])
+            if e - s == word.count && bytes[s ..< e].elementsEqual(word) { return i }
+            j = (j + 1) & mask
+        }
+        return nil
+    }
+}
+
 /// Next-word tables ("context<TAB>w1 w2 w3"), packed the same way: one string per context, split only
 /// when that context is looked up.
 final class PhraseTable {
@@ -278,7 +478,7 @@ final class PhraseTable {
         var size = 1024
         while size < (lines + 1) * 2 { size <<= 1 }
         slots = [Int32](repeating: 0, count: size)
-        WordList.forEachLine(data) { line in
+        WordListBuilder.forEachLine(data) { line in
             guard let tab = line.firstIndex(of: 0x09) else { return }
             let key = line[..<tab], value = line[(tab + 1)...]
             guard !key.isEmpty, !value.isEmpty, find(Array(key)) == nil else { return }

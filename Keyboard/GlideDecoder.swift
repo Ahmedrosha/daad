@@ -43,19 +43,7 @@ enum GlideDecoder {
     }
 
     /// Maps a word's letters to the keys that produce them (أ → ا, harakat dropped, …).
-    static func keyLetters(of word: String, language: DaadLanguage) -> [Character] {
-        var out: [Character] = []
-        for ch in word.lowercased() {
-            switch ch {
-            case "أ", "إ", "آ", "ٱ": out.append("ا")
-            case "ئ": out.append("ي")
-            case "\u{064B}", "\u{064C}", "\u{064D}", "\u{064E}", "\u{064F}", "\u{0650}", "\u{0651}", "\u{0652}", "ـ":
-                continue
-            default: out.append(ch)
-            }
-        }
-        return out
-    }
+    static func keyLetters(of word: String, language: DaadLanguage) -> [Character] { TextFold.keyLetters(of: word) }
 
     private static func nearestKeys(to point: CGPoint, in centers: [Character: CGPoint], count: Int, keyWidth: CGFloat) -> Set<Character> {
         let sorted = centers.sorted { distance($0.value, point) < distance($1.value, point) }

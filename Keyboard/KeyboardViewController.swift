@@ -115,6 +115,9 @@ final class KeyboardViewController: UIInputViewController {
         primaryLanguage = language == .arabic ? "ar" : "en-US"
         directionArabic = language == .arabic
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
+        lexicon.onWordsLoading = { [weak self] language, waited in
+            self?.recordMemory("\(language == .arabic ? "Arabic" : "English") words loading\(waited ? ", typing waits" : "")")
+        }
         lexicon.onWordsLoaded = { [weak self] language, ms, waited in
             self?.recordMemory("\(language == .arabic ? "Arabic" : "English") words loaded in \(ms) ms\(waited ? ", typing waited" : ", in background")")
         }
@@ -1276,6 +1279,10 @@ final class KeyboardViewController: UIInputViewController {
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
         recordMemory("memory warning")
+        // Let go of what isn't in use (read again when needed): the other language's words, the Franco
+        // index and the next-word tables. What is being typed with stays.
+        lexicon.trim(keeping: inputMode == .dual ? [.arabic, .english] : [language])
+        URLCache.shared.removeAllCachedResponses()
     }
 
     // MARK: Plain typing (passwords, codes, e-mail, Remote Desktop)

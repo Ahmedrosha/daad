@@ -34,6 +34,12 @@ jobs:
             && python3 scripts/build_ngrams.py "$RUNNER_TEMP/words/ara.tsv.bz2" ar Keyboard/Resources || echo "Arabic sentences unavailable"
           wc -l Keyboard/Resources/*.txt
 
+      - name: Build ready word lists
+        run: |
+          swiftc -O -o "$RUNNER_TEMP/dictgen" Keyboard/WordStore.swift Keyboard/TextFold.swift scripts/dictgen/main.swift
+          "$RUNNER_TEMP/dictgen" ar Keyboard/Resources/words_ar.txt Keyboard/Resources/words_eg.txt Keyboard/Resources/dict_ar.bin
+          "$RUNNER_TEMP/dictgen" en Keyboard/Resources/words_en.txt Keyboard/Resources/dict_en.bin
+
       - name: Generate Xcode project
         run: xcodegen generate
 

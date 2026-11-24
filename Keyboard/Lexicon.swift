@@ -96,9 +96,12 @@ final class Lexicon {
     /// Told on the main thread when a word list has been read: how long it took and whether typing
     /// had to wait for it (shown in the app's Keyboard memory screen).
     var onWordsLoaded: ((_ language: DaadLanguage, _ milliseconds: Int, _ waited: Bool) -> Void)?
+    /// Told on the main thread when reading a word list starts (so a reading that never finishes shows).
+    var onWordsLoading: ((_ language: DaadLanguage, _ waited: Bool) -> Void)?
 
     private func ensureLoaded(_ language: DaadLanguage) {
         guard lists[language] == nil else { return }
+        onWordsLoading?(language, true)
         let start = CFAbsoluteTimeGetCurrent()
         lists[language] = Lexicon.loadWords(language)
         invalidateCache()
@@ -113,6 +116,7 @@ final class Lexicon {
         preloadNextTables(language)
         guard lists[language] == nil, !preloading.contains(language) else { return }
         preloading.insert(language)
+        onWordsLoading?(language, false)
         DispatchQueue.global(qos: .userInitiated).async {
             let start = CFAbsoluteTimeGetCurrent()
             let list = Lexicon.loadWords(language)
@@ -139,21 +143,23 @@ final class Lexicon {
     }
 
     private static func loadWords(_ language: DaadLanguage) -> WordList {
+        prebuiltWords(language) ?? buildWords(language)
+    }
+
+    /// The word list built at build time (scripts/dictgen), mapped straight from the bundle.
+    static func prebuiltWords(_ language: DaadLanguage) -> WordList? {
+        guard let url = Bundle(for: Lexicon.self).url(forResource: language == .arabic ? "dict_ar" : "dict_en",
+                                                      withExtension: "bin") else { return nil }
+        return WordList(mapping: url)
+    }
+
+    /// The same list built from the text files (when the prebuilt file is missing; tests compare both).
+    static func buildWords(_ language: DaadLanguage) -> WordList {
         let bundle = Bundle(for: Lexicon.self)
-        let name = language == .arabic ? "words_ar" : "words_en"
-        let list = WordList(file: bundle.url(forResource: name, withExtension: "txt"),
-                            expected: language == .arabic ? 105_000 : 50_000)
-        // Everyday Egyptian words that subtitles rarely contain, ranked as fairly common.
-        // "word" = everyday word, ranked high; "word 3" = a generated verb form, ranked a bit lower.
-        if language == .arabic {
-            let top = list.top
-            list.merge(file: bundle.url(forResource: "words_eg", withExtension: "txt")) { tier in
-                max(top / (40 * tier), 1)
-            }
-            list.sortByCount()
-        }
-        list.buildIndexes()
-        return list
+        let arabic = language == .arabic
+        return WordListBuilder.make(main: bundle.url(forResource: arabic ? "words_ar" : "words_en", withExtension: "txt"),
+                                    egyptian: arabic ? bundle.url(forResource: "words_eg", withExtension: "txt") : nil,
+                                    arabic: arabic).finish()
     }
 
     // MARK: Text helpers
@@ -163,21 +169,7 @@ final class Lexicon {
     }
 
     /// Loose form used for matching: lowercase, no harakat, hamza/taa marbuta variants folded.
-    static func normalize(_ text: String) -> String {
-        var out = ""
-        for scalar in text.lowercased().unicodeScalars {
-            switch scalar.value {
-            case 0x064B...0x0652, 0x0640: continue           // harakat, tatweel
-            case 0x0623, 0x0625, 0x0622, 0x0671: out.append("ا")
-            case 0x0649: out.append("ي")
-            case 0x0629: out.append("ه")
-            case 0x0624: out.append("و")
-            case 0x0626: out.append("ي")
-            default: out.unicodeScalars.append(scalar)
-            }
-        }
-        return out
-    }
+    static func normalize(_ text: String) -> String { TextFold.normalize(text) }
 
     /// Copies the capitalization of what the user typed onto a suggestion.
     static func matchCase(_ word: String, like typed: String) -> String {
