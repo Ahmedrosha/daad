@@ -93,10 +93,16 @@ final class Lexicon {
 
     // MARK: Loading
 
+    /// Told on the main thread when a word list has been read: how long it took and whether typing
+    /// had to wait for it (shown in the app's Keyboard memory screen).
+    var onWordsLoaded: ((_ language: DaadLanguage, _ milliseconds: Int, _ waited: Bool) -> Void)?
+
     private func ensureLoaded(_ language: DaadLanguage) {
         guard lists[language] == nil else { return }
+        let start = CFAbsoluteTimeGetCurrent()
         lists[language] = Lexicon.loadWords(language)
         invalidateCache()
+        onWordsLoaded?(language, Int((CFAbsoluteTimeGetCurrent() - start) * 1000), true)
     }
 
     private var preloading: Set<DaadLanguage> = []
@@ -108,12 +114,15 @@ final class Lexicon {
         guard lists[language] == nil, !preloading.contains(language) else { return }
         preloading.insert(language)
         DispatchQueue.global(qos: .userInitiated).async {
+            let start = CFAbsoluteTimeGetCurrent()
             let list = Lexicon.loadWords(language)
+            let ms = Int((CFAbsoluteTimeGetCurrent() - start) * 1000)
             DispatchQueue.main.async {
                 self.preloading.remove(language)
                 guard self.lists[language] == nil else { return }   // typing already loaded it
                 self.lists[language] = list
                 self.invalidateCache()
+                self.onWordsLoaded?(language, ms, false)
             }
         }
     }

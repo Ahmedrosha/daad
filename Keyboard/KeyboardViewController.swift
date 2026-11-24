@@ -115,6 +115,9 @@ final class KeyboardViewController: UIInputViewController {
         primaryLanguage = language == .arabic ? "ar" : "en-US"
         directionArabic = language == .arabic
         lexicon.configure(store: store, mergingFrom: hasFullAccess ? .standard : nil)
+        lexicon.onWordsLoaded = { [weak self] language, ms, waited in
+            self?.recordMemory("\(language == .arabic ? "Arabic" : "English") words loaded in \(ms) ms\(waited ? ", typing waited" : ", in background")")
+        }
         clipboard.configure(store: store)
 
         keyboardView.delegate = self
