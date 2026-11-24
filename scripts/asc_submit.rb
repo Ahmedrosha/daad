@@ -80,6 +80,19 @@ app_id = app["id"]
 
 versions = api("GET", "/v1/apps/#{app_id}/appStoreVersions?filter[platform]=IOS&limit=5")["data"]
 versions.each { |v| puts "version #{v["attributes"]["versionString"]}: #{v["attributes"]["appStoreState"]}" }
+# An approved version waiting for its release blocks a new one: release it first (RELEASE_PENDING=1).
+versions.select { |v| v["attributes"]["appStoreState"] == "PENDING_DEVELOPER_RELEASE" && v["attributes"]["versionString"] != VERSION }.each do |v|
+  if ENV["RELEASE_PENDING"] == "1"
+    change("release #{v["attributes"]["versionString"]} to the App Store") do
+      api("POST", "/v1/appStoreVersionReleaseRequests", { data: { type: "appStoreVersionReleaseRequests",
+        relationships: { appStoreVersion: { data: { type: "appStoreVersions", id: v["id"] } } } } })
+    end
+    sleep 20 unless DRY
+  else
+    abort "Version #{v["attributes"]["versionString"]} is approved and waiting to be released: release it first (release_pending=1)"
+  end
+end
+versions = api("GET", "/v1/apps/#{app_id}/appStoreVersions?filter[platform]=IOS&limit=5")["data"] unless DRY
 version = versions.find { |v| v["attributes"]["versionString"] == VERSION }
 if version.nil?
   version = change("create version #{VERSION}") do

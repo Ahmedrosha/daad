@@ -9,6 +9,10 @@ on:
       build:
         description: "Build number (e.g. 62)"
         required: true
+      release_pending:
+        description: "1 = first release an approved version that waits for release"
+        required: true
+        default: "0"
       dry_run:
         description: "1 = only show what would happen"
         required: true
@@ -27,6 +31,7 @@ jobs:
           VERSION: ${{ inputs.version }}
           BUILD: ${{ inputs.build }}
           DRY_RUN: ${{ inputs.dry_run }}
+          RELEASE_PENDING: ${{ inputs.release_pending }}
         run: |
           printf '%s' "$KEY" > key.p8
           KEY_PATH=key.p8 ruby scripts/asc_submit.rb
