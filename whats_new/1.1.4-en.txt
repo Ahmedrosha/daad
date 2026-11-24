@@ -1,0 +1,5 @@
+- A much bigger Egyptian Arabic dictionary: more everyday words, more verbs, and forms like "قولتله" and "هعملهولك".
+- The keyboard uses far less memory and opens faster.
+- English + العربية: after Enter or sending a message, the keyboard stays in the last language you typed, and Arabic digits (١٢٣) show from the start of a message.
+- English + العربية: the ⇄ key in an empty box flips the side, the digits and the look together.
+- Other fixes and improvements.
