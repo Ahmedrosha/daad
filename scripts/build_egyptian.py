@@ -277,6 +277,12 @@ def object_forms(he, stem, pres, kind):
     for o in ["ه", "ها", "هم", "لي", "لك", "له", "لو", "لها", "لهم"]:
         out += ["م" + past_i + o + "ش", "مت" + pres + o + "ش"]
     out += ["مت" + pres + "ش", "مت" + pres + "يش", "مت" + pres + "وش"]
+    # Two objects, "it for you": هعملهولك، هبعتهالك، قولتهولها، اعملهملي.
+    imp = pres if pres[0] in "اأ" or pres in NO_ALIF_IMPERATIVE else "ا" + pres
+    for b in [past_i, "ه" + pres, "هن" + pres, imp]:
+        for d in ["هو", "ها", "هم"]:
+            for i in ["لي", "لك", "له", "لو", "لها", "لهم", "لنا"]:
+                out.append(b + d + i)
     return out
 
 
