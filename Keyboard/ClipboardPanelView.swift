@@ -105,6 +105,13 @@ final class ClipboardPanelView: UIView, UITableViewDataSource, UITableViewDelega
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    /// Keyboard hidden: let go of the rows; `configure` fills them again.
+    func releaseContent() {
+        items = []
+        pinned = []
+        table.reloadData()
+    }
+
     func configure(theme: KeyboardTheme, items: [String], pinned: [String], arabic: Bool, fullAccess: Bool) {
         self.theme = theme
         self.items = items

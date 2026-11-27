@@ -107,6 +107,13 @@ final class EmojiPanelView: UIView, UICollectionViewDataSource, UICollectionView
         if !collection.bounds.isEmpty { collection.setContentOffset(.zero, animated: false) }
     }
 
+    /// Keyboard hidden: let go of the emoji cells (drawn emoji are big); `configure` fills them again.
+    func releaseContent() {
+        sections = []
+        bar.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        collection.reloadData()
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
         let w = bounds.width

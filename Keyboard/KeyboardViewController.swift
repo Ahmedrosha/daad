@@ -1287,7 +1287,25 @@ final class KeyboardViewController: UIInputViewController {
     static var live = 0
     static var processStarted = false
 
-    deinit { KeyboardViewController.live -= 1 }
+    deinit {
+        KeyboardViewController.live -= 1
+        if let group = SharedSettings.store {
+            MemoryReport.record(in: group, event: "a keyboard copy was released, \(KeyboardViewController.live) left", merge: false)
+        }
+    }
+
+    /// Hidden keyboards stay alive (iOS can keep one per app that used it): when hidden, let go of
+    /// what is quick to make again. Panels are filled again when they open.
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        emojiPanel.releaseContent()
+        clipboardPanel.releaseContent()
+        searchPanel.show(items: [], images: false)
+        gifWork?.cancel()
+        gifResults = []
+        URLCache.shared.removeAllCachedResponses()
+        recordMemory("hidden, after cleanup (\(KeyboardViewController.live) copies alive)")
+    }
 
     override func didReceiveMemoryWarning() {
         super.didReceiveMemoryWarning()
